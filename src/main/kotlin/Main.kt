@@ -33,13 +33,14 @@ import kotlin.math.sin
 
 class Simulator : Application() {
     // CONSTANTS
-    private val fps = 60  // frames per second
+    private val fps = 60  // Frames per second
+    private val numberSamples = 50  // Number of samples when drawing the trajectory
     private val startPose = Pose2d(0.0, -24.0 * 4 - 6.681 + 2, 180.0.toRadians)  // x, y, angle
     private val fieldDimPixels = 640.0  // 640px x 640px
     private val fieldDimReal = 144.0  // 144in x 144in
     private val robotWidth = 17.995  // 17.995in (rear to intake tip)
     private val robotLength = 17.319 // 17.319in (side to side)
-    private val trackWidth = 12.7  // distance between wheels
+    private val trackWidth = 12.7  // Distance between wheels
     private val maxVel = 60.0  // mph
     private val maxAccel = 60.0  // mph
     private val maxAngVel = 5.528055275836724  // rad/sec
@@ -134,9 +135,11 @@ class Simulator : Application() {
             is ActionSegment -> updateRobotAction(segment)
             is WaitSegment -> TODO()
         }
+        // Render everything
         gc.drawImage(field, 0.0, 0.0)
         robot.render(gc)
-        handleCollisions()
+        // Draw trajectory
+        sequence.sequenceList.forEach { drawTrajectory(gc, it) }
         gc.textAlign = TextAlignment.CENTER
         gc.textBaseline = VPos.CENTER
         gc.font = Font("Arial Bold", 30.0)
@@ -152,6 +155,8 @@ class Simulator : Application() {
             rightBackdrop.centerPointY - 7
         )
         pixelPositions.forEach { (x, y) -> gc.drawImage(pixel, x - pixel.width / 2, y - pixel.height / 2) }
+        handleCollisions()
+        // Stop the animation once we finish the final segment
         if (segmentIndex == sequence.size()) timeline.stop()
     }
 
@@ -213,6 +218,32 @@ class Simulator : Application() {
                 ) rightBackDropScore++
         }
         if (getProfileTime() >= segment.duration) segmentIndex++
+    }
+
+    private fun drawTrajectory(gc: GraphicsContext, segment: SequenceSegment) {
+        if (segment is TrajectorySegment) {
+            gc.lineWidth = 7.0
+            gc.stroke = Color.BLUE
+            gc.fill = Color.BLUE
+            val path = segment.trajectory.path
+            val samplePoints = Array(numberSamples) { it * (path.length() / (numberSamples - 1)) }
+            val pathPoints = samplePoints.map { point -> path[point].in2px.vec() }
+            arrayOf(pathPoints.first(), pathPoints.last()).forEach {
+                gc.fillOval(
+                    it.x + robotWidth.in2px / 2 - 5,
+                    -it.y + robotLength.in2px / 2 - 5,
+                    10.0,
+                    10.0
+                )
+            }
+            gc.globalAlpha = 0.6
+            gc.strokePolyline(
+                pathPoints.map { it.x + robotWidth.in2px / 2 }.toDoubleArray(),
+                pathPoints.map { -it.y + robotLength.in2px / 2 }.toDoubleArray(),
+                numberSamples
+            )
+            gc.globalAlpha = 1.0
+        }
     }
 
     private fun getTrajectorySequence(): TrajectorySequence {
