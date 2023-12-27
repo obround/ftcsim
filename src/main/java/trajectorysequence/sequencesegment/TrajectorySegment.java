@@ -1,11 +1,13 @@
 package trajectorysequence.sequencesegment;
 
 import com.acmerobotics.roadrunner.trajectory.Trajectory;
+import trajectorysequence.TrajectoryType;
 
 import java.util.Collections;
 
 public final class TrajectorySegment extends SequenceSegment {
     private final Trajectory trajectory;
+    public TrajectoryType trajectoryType;
 
     public TrajectorySegment(Trajectory trajectory) {
         // Note: Markers are already stored in the `Trajectory` itself.

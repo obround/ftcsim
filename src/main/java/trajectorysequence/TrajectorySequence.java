@@ -5,6 +5,8 @@ import trajectorysequence.sequencesegment.SequenceSegment;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class TrajectorySequence {
     public final List<SequenceSegment> sequenceList;
