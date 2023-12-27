@@ -6,15 +6,22 @@ import com.acmerobotics.roadrunner.trajectory.constraints.ProfileAccelerationCon
 import javafx.animation.KeyFrame
 import javafx.animation.Timeline
 import javafx.application.Application
+import javafx.collections.FXCollections
+import javafx.event.ActionEvent
+import javafx.geometry.Pos
 import javafx.geometry.Rectangle2D
 import javafx.geometry.VPos
 import javafx.scene.Scene
 import javafx.scene.canvas.Canvas
 import javafx.scene.canvas.GraphicsContext
-import javafx.scene.control.Alert
-import javafx.scene.control.ButtonType
+import javafx.scene.control.*
+import javafx.scene.control.cell.ComboBoxTableCell
+import javafx.scene.control.cell.PropertyValueFactory
 import javafx.scene.image.Image
-import javafx.scene.layout.Pane
+import javafx.scene.image.ImageView
+import javafx.scene.layout.HBox
+import javafx.scene.layout.Priority
+import javafx.scene.layout.VBox
 import javafx.scene.paint.Color
 import javafx.scene.text.Font
 import javafx.scene.text.TextAlignment
@@ -102,12 +109,59 @@ class Simulator : Application() {
     private val Double.in2px get() = this * fieldDimPixels / fieldDimReal
     private val Pose2d.in2px get() = Pose2d(this.x.in2px, this.y.in2px, heading.toDegrees)
 
-    private val windowWidth = field.width
-    private val windowHeight = field.height
+    private val windowWidth = field.width + 600
+    private val windowHeight = field.height + 50
+
+    // UI
+    private val proposedTrajectories = FXCollections.observableArrayList<FXTrajectory>()
+    private val actionOptions =
+        FXCollections.observableList(listOf("Forward", "Backward", "Strafe Left", "Strafe Right", "Turn"))
 
     override fun start(stage: Stage) {
-        val root = Pane()
+        val root = HBox()
         val canvas = Canvas(field.width, field.height)
+        val builder = VBox()
+
+        root.style = "-fx-padding: 25;"
+        builder.style = "-fx-padding: 0 0 0 25;"
+
+        val topLabel = HBox()
+        val ftcLogo = ImageView("/ftc_logo.png")
+        val ftcsimText = Label("FTCSIM")
+        ftcsimText.font = Font("Arial Bold Italic", 72.0)
+        ftcLogo.fitWidth = 150.0
+        ftcLogo.isPreserveRatio = true
+        topLabel.children.addAll(ftcLogo, ftcsimText)
+
+        topLabel.alignment = Pos.CENTER
+        builder.spacing = 15.0
+        HBox.setHgrow(builder, Priority.ALWAYS)
+
+        val trajectoryTable = TableView<FXTrajectory>()
+        val actionColumn = TableColumn<FXTrajectory, String>("Action")
+        val quantificationColumn = TableColumn<FXTrajectory, Int>("in/deg")
+
+        quantificationColumn.cellValueFactory = PropertyValueFactory("Quantification")
+
+        actionColumn.minWidth = 110.0
+        actionColumn.cellValueFactory = PropertyValueFactory("Action")
+        actionColumn.cellFactory = ComboBoxTableCell.forTableColumn(actionOptions)
+        actionColumn.setCellFactory {
+            val combo = ComboBox(actionOptions)
+            val cell = ActionCell(combo)
+            combo.setOnAction { trajectoryTable.items[cell.index].setAction(combo.value) }
+            cell
+        }
+
+        trajectoryTable.columns.setAll(actionColumn, quantificationColumn)
+        trajectoryTable.isEditable = true
+        trajectoryTable.placeholder = Label("No trajectories added")
+        trajectoryTable.items = proposedTrajectories
+
+        val addTrajectoryButton = Button("Add trajectory")
+        addTrajectoryButton.setOnAction { proposedTrajectories.add(FXTrajectory("Forward", 0)) }
+
+        builder.children.addAll(topLabel, trajectoryTable, addTrajectoryButton)
 
         collisionAlert.title = null
         collisionAlert.headerText = "Invalid collision with fixed object"
@@ -122,7 +176,7 @@ class Simulator : Application() {
         ))
         timeline.cycleCount = Timeline.INDEFINITE
 
-        root.children.add(canvas)
+        root.children.addAll(canvas, builder)
         stage.scene = Scene(root, windowWidth, windowHeight)
         stage.show()
         timeline.play()
@@ -138,8 +192,9 @@ class Simulator : Application() {
         // Render everything
         gc.drawImage(field, 0.0, 0.0)
         robot.render(gc)
-        // Draw trajectory
+        // Draw the robot's trajectory
         sequence.sequenceList.forEach { drawTrajectory(gc, it) }
+        // Draw the backboard score
         gc.textAlign = TextAlignment.CENTER
         gc.textBaseline = VPos.CENTER
         gc.font = Font("Arial Bold", 30.0)
@@ -154,6 +209,7 @@ class Simulator : Application() {
             rightBackdrop.centerPointX,
             rightBackdrop.centerPointY - 7
         )
+        // Draw the pixels placed on the field
         pixelPositions.forEach { (x, y) -> gc.drawImage(pixel, x - pixel.width / 2, y - pixel.height / 2) }
         handleCollisions()
         // Stop the animation once we finish the final segment
@@ -322,6 +378,8 @@ class Simulator : Application() {
         val time = currentTime()
         return time - startTime - prevTrajectoryDuration
     }
+
+
 }
 
 val Double.toRadians get() = Math.toRadians(this)
