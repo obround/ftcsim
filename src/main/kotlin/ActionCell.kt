@@ -3,14 +3,13 @@ import javafx.scene.control.TableCell
 
 
 class ActionCell(private var combo: ComboBox<String>) : TableCell<FXTrajectory, String>() {
-    override fun updateItem(reason: String?, empty: Boolean) {
-        super.updateItem(reason, empty)
+    override fun updateItem(act: String?, empty: Boolean) {
+        super.updateItem(act, empty)
         graphic = if (empty) {
             null
         } else {
-            combo.value = reason
+            combo.value = act
             combo
         }
     }
 }
-

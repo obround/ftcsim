@@ -7,7 +7,7 @@ import javafx.animation.KeyFrame
 import javafx.animation.Timeline
 import javafx.application.Application
 import javafx.collections.FXCollections
-import javafx.event.ActionEvent
+import javafx.geometry.Insets
 import javafx.geometry.Pos
 import javafx.geometry.Rectangle2D
 import javafx.geometry.VPos
@@ -17,6 +17,7 @@ import javafx.scene.canvas.GraphicsContext
 import javafx.scene.control.*
 import javafx.scene.control.cell.ComboBoxTableCell
 import javafx.scene.control.cell.PropertyValueFactory
+import javafx.scene.control.cell.TextFieldTableCell
 import javafx.scene.image.Image
 import javafx.scene.image.ImageView
 import javafx.scene.layout.HBox
@@ -76,13 +77,15 @@ class Simulator : Application() {
     private val pixel = Image("/pixel_ftc.png")
     private val robot = Robot(
         Image("/robot_ftc.png", robotWidth.in2px, robotLength.in2px, true, false),
-        fieldDimPixels
+        fieldDimPixels,
+        startPose.in2px
     )
 
     // OTHER
+    private var simulate = false
     private var leftBackDropScore = 0
     private var rightBackDropScore = 0
-    private val pixelPositions = mutableListOf<Pair<Double, Double>>()
+    private var pixelPositions = mutableListOf<Pair<Double, Double>>()
     private var prevPose = startPose
     private val velocityConstraint = MinVelocityConstraint(
         listOf(
@@ -97,13 +100,7 @@ class Simulator : Application() {
     private var startTime = Double.NaN
     private var sequence = getTrajectorySequence()
     private var segmentIndex = 0
-    private lateinit var timeline: Timeline
     private var trajectoryDurations = sequence.sequenceList.map { it.duration }
-    private val collisionAlert = Alert(
-        Alert.AlertType.ERROR,
-        "ur skill issue got the opps ded crying",
-        ButtonType.OK
-    )
 
     // CONVERSIONS
     private val Double.in2px get() = this * fieldDimPixels / fieldDimReal
@@ -113,58 +110,39 @@ class Simulator : Application() {
     private val windowHeight = field.height + 50
 
     // UI
+    private val root = HBox()
+    private val canvas = Canvas(field.width, field.height)
+    private val builder = VBox()
+    private lateinit var timeline: Timeline
+    private val collisionError = Alert(
+        Alert.AlertType.ERROR,
+        "ur skill issue got the opps ded crying",
+        ButtonType.OK
+    )
+    private val expectedDoubleError = Alert(
+        Alert.AlertType.ERROR,
+        "why tf would u not put a decimal bruh",
+        ButtonType.OK
+    )
     private val proposedTrajectories = FXCollections.observableArrayList<FXTrajectory>()
     private val actionOptions =
         FXCollections.observableList(listOf("Forward", "Backward", "Strafe Left", "Strafe Right", "Turn"))
 
     override fun start(stage: Stage) {
-        val root = HBox()
-        val canvas = Canvas(field.width, field.height)
-        val builder = VBox()
-
-        root.style = "-fx-padding: 25;"
-        builder.style = "-fx-padding: 0 0 0 25;"
-
-        val topLabel = HBox()
-        val ftcLogo = ImageView("/ftc_logo.png")
-        val ftcsimText = Label("FTCSIM")
-        ftcsimText.font = Font("Arial Bold Italic", 72.0)
-        ftcLogo.fitWidth = 150.0
-        ftcLogo.isPreserveRatio = true
-        topLabel.children.addAll(ftcLogo, ftcsimText)
-
-        topLabel.alignment = Pos.CENTER
+        root.padding = Insets(25.0)
+        builder.padding = Insets(0.0, 0.0, 0.0, 25.0)
         builder.spacing = 15.0
         HBox.setHgrow(builder, Priority.ALWAYS)
 
-        val trajectoryTable = TableView<FXTrajectory>()
-        val actionColumn = TableColumn<FXTrajectory, String>("Action")
-        val quantificationColumn = TableColumn<FXTrajectory, Int>("in/deg")
+        initLogo()
+        initTrajectoryTable()
+        initButtons()
 
-        quantificationColumn.cellValueFactory = PropertyValueFactory("Quantification")
-
-        actionColumn.minWidth = 110.0
-        actionColumn.cellValueFactory = PropertyValueFactory("Action")
-        actionColumn.cellFactory = ComboBoxTableCell.forTableColumn(actionOptions)
-        actionColumn.setCellFactory {
-            val combo = ComboBox(actionOptions)
-            val cell = ActionCell(combo)
-            combo.setOnAction { trajectoryTable.items[cell.index].setAction(combo.value) }
-            cell
-        }
-
-        trajectoryTable.columns.setAll(actionColumn, quantificationColumn)
-        trajectoryTable.isEditable = true
-        trajectoryTable.placeholder = Label("No trajectories added")
-        trajectoryTable.items = proposedTrajectories
-
-        val addTrajectoryButton = Button("Add trajectory")
-        addTrajectoryButton.setOnAction { proposedTrajectories.add(FXTrajectory("Forward", 0)) }
-
-        builder.children.addAll(topLabel, trajectoryTable, addTrajectoryButton)
-
-        collisionAlert.title = null
-        collisionAlert.headerText = "Invalid collision with fixed object"
+        // ERROR INITIALIZATION
+        collisionError.title = null
+        collisionError.headerText = "Invalid collision with fixed object"
+        expectedDoubleError.title = null
+        expectedDoubleError.headerText = "Expected a decimal value for the specified field"
 
         stage.title = "FTCSIM"
         stage.isResizable = false
@@ -182,15 +160,106 @@ class Simulator : Application() {
         timeline.play()
     }
 
+    private fun initButtons() {
+        val buttonBar = HBox()
+        val runImage = ImageView("/run.png")
+        val stopImage = ImageView("/stop.png")
+
+        val addTrajectoryButton = Button("Add trajectory")
+        val run = Button("Run")
+        val stop = Button("Stop")
+
+        buttonBar.spacing = 4.0
+
+        run.setPrefSize(17.0, 17.0);
+        stop.setPrefSize(17.0, 17.0);
+
+        runImage.isPreserveRatio = true
+        runImage.fitWidth = run.prefWidth
+        run.graphic = runImage
+        run.contentDisplay = ContentDisplay.GRAPHIC_ONLY
+
+        stopImage.isPreserveRatio = true
+        stopImage.fitWidth = stop.prefWidth
+        stop.graphic = stopImage
+        stop.contentDisplay = ContentDisplay.GRAPHIC_ONLY
+
+        addTrajectoryButton.setOnAction { proposedTrajectories.add(FXTrajectory("Forward", "0")) }
+        run.setOnAction {
+            timeline.play()
+            simulate = true
+        }
+        stop.setOnAction {
+            simulate = false
+            resetValues()
+            robot.moveTo(startPose.in2px)
+            timeline.play()
+        }
+
+        buttonBar.children.addAll(addTrajectoryButton, run, stop)
+        builder.children.add(buttonBar)
+    }
+
+    private fun initTrajectoryTable() {
+        val trajectoryTable = TableView<FXTrajectory>()
+        val actionColumn = TableColumn<FXTrajectory, String>("Action")
+        val quantificationColumn = TableColumn<FXTrajectory, String>("in/deg")
+
+        quantificationColumn.style = "-fx-alignment: CENTER-LEFT;"
+        quantificationColumn.cellValueFactory = PropertyValueFactory("Quantification")
+        quantificationColumn.cellFactory = TextFieldTableCell.forTableColumn()
+        quantificationColumn.setOnEditCommit { t ->
+            if (t.newValue.toDoubleOrNull() != null) {
+                (t.tableView.items[t.tablePosition.row] as FXTrajectory)
+                    .setQuantification(t.newValue)
+            } else expectedDoubleError.showAndWait()
+        }
+        quantificationColumn.isSortable = false
+
+        actionColumn.minWidth = 110.0
+        actionColumn.cellValueFactory = PropertyValueFactory("Action")
+        actionColumn.cellFactory = ComboBoxTableCell.forTableColumn(actionOptions)
+        actionColumn.setCellFactory {
+            val combo = ComboBox(actionOptions)
+            val cell = ActionCell(combo)
+            combo.setOnAction { trajectoryTable.items[cell.index].setAction(combo.value) }
+            cell
+        }
+        actionColumn.isSortable = false
+
+        trajectoryTable.columns.setAll(actionColumn, quantificationColumn)
+        trajectoryTable.isEditable = true
+        trajectoryTable.placeholder = Label("No trajectories added")
+        trajectoryTable.items = proposedTrajectories
+
+        builder.children.add(trajectoryTable)
+    }
+
+    private fun initLogo() {
+        val topLabel = HBox()
+        val ftcLogo = ImageView("/ftc_logo.png")
+        val ftcsimText = Label("FTCSIM")
+
+        ftcsimText.font = Font("Arial Bold Italic", 72.0)
+        ftcLogo.fitWidth = 150.0
+        ftcLogo.isPreserveRatio = true
+        topLabel.children.addAll(ftcLogo, ftcsimText)
+        topLabel.alignment = Pos.CENTER
+
+        builder.children.add(topLabel)
+    }
+
     private fun simulationLoop(gc: GraphicsContext) {
-        when (val segment = sequence.get(segmentIndex)) {
-            is TrajectorySegment -> updateRobotMove(segment)
-            is TurnSegment -> updateRobotTurn(segment)
-            is ActionSegment -> updateRobotAction(segment)
-            is WaitSegment -> TODO()
+        gc.drawImage(field, 0.0, 0.0)
+        if (simulate) {
+            when (val segment = sequence.get(segmentIndex)) {
+                is TrajectorySegment -> updateRobotMove(segment)
+                is TurnSegment -> updateRobotTurn(segment)
+                is ActionSegment -> updateRobotAction(segment)
+                is WaitSegment -> TODO()
+            }
         }
         // Render everything
-        gc.drawImage(field, 0.0, 0.0)
         robot.render(gc)
         // Draw the robot's trajectory
         sequence.sequenceList.forEach { drawTrajectory(gc, it) }
@@ -216,11 +285,21 @@ class Simulator : Application() {
         if (segmentIndex == sequence.size()) timeline.stop()
     }
 
+    private fun resetValues() {
+        leftBackDropScore = 0
+        rightBackDropScore = 0
+        pixelPositions = mutableListOf()
+        prevPose = startPose
+        startTime = Double.NaN
+        sequence = getTrajectorySequence()
+        segmentIndex = 0
+    }
+
     private fun handleCollisions() {
         fixedObjects.forEach { obj ->
             if (robot.collision(obj)) {
                 timeline.stop()
-                collisionAlert.show()
+                collisionError.show()
             }
         }
     }
