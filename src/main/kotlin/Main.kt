@@ -15,11 +15,13 @@ import javafx.scene.Scene
 import javafx.scene.canvas.Canvas
 import javafx.scene.canvas.GraphicsContext
 import javafx.scene.control.*
-import javafx.scene.control.cell.ComboBoxTableCell
 import javafx.scene.control.cell.PropertyValueFactory
 import javafx.scene.control.cell.TextFieldTableCell
 import javafx.scene.image.Image
 import javafx.scene.image.ImageView
+import javafx.scene.input.ClipboardContent
+import javafx.scene.input.DataFormat
+import javafx.scene.input.TransferMode
 import javafx.scene.layout.HBox
 import javafx.scene.layout.Priority
 import javafx.scene.layout.VBox
@@ -98,9 +100,11 @@ class Simulator : Application() {
     )
     private val accelerationConstraint = ProfileAccelerationConstraint(maxAccel)
     private var startTime = Double.NaN
+    private val trajectoryTable = TableView<FXTrajectory>()
+
     private var sequence = getTrajectorySequence()
     private var segmentIndex = 0
-    private var trajectoryDurations = sequence.sequenceList.map { it.duration }
+    private var trajectoryDurations = sequence.sequenceList?.map { it.duration } ?: emptyList()
 
     // CONVERSIONS
     private val Double.in2px get() = this * fieldDimPixels / fieldDimReal
@@ -110,6 +114,9 @@ class Simulator : Application() {
     private val windowHeight = field.height + 50
 
     // UI
+    private val serializedMimeType = DataFormat("application/x-java-serialized-object")
+    private var trajectoriesModified = false
+    private val selections = mutableListOf<FXTrajectory>()
     private val root = HBox()
     private val canvas = Canvas(field.width, field.height)
     private val builder = VBox()
@@ -121,12 +128,21 @@ class Simulator : Application() {
     )
     private val expectedDoubleError = Alert(
         Alert.AlertType.ERROR,
-        "why tf would u not put a decimal bruh",
+        "why tf would u not put a positive decimal bruh",
         ButtonType.OK
     )
-    private val proposedTrajectories = FXCollections.observableArrayList<FXTrajectory>()
     private val actionOptions =
-        FXCollections.observableList(listOf("Forward", "Backward", "Strafe Left", "Strafe Right", "Turn"))
+        FXCollections.observableList(
+            listOf(
+                FXAction.FORWARD,
+                FXAction.BACKWARD,
+                FXAction.STRAFE_LEFT,
+                FXAction.STRAFE_RIGHT,
+                FXAction.TURN,
+                FXAction.DROP_PIXEL,
+                FXAction.DROP_PIXEL_ON_BOARD
+            )
+        )
 
     override fun start(stage: Stage) {
         root.padding = Insets(25.0)
@@ -137,12 +153,7 @@ class Simulator : Application() {
         initLogo()
         initTrajectoryTable()
         initButtons()
-
-        // ERROR INITIALIZATION
-        collisionError.title = null
-        collisionError.headerText = "Invalid collision with fixed object"
-        expectedDoubleError.title = null
-        expectedDoubleError.headerText = "Expected a decimal value for the specified field"
+        initErrors()
 
         stage.title = "FTCSIM"
         stage.isResizable = false
@@ -160,6 +171,13 @@ class Simulator : Application() {
         timeline.play()
     }
 
+    private fun initErrors() {
+        collisionError.title = null
+        collisionError.headerText = "Invalid collision with fixed object"
+        expectedDoubleError.title = null
+        expectedDoubleError.headerText = "Expected a decimal value for the specified field"
+    }
+
     private fun initButtons() {
         val buttonBar = HBox()
         val runImage = ImageView("/run.png")
@@ -171,8 +189,8 @@ class Simulator : Application() {
 
         buttonBar.spacing = 4.0
 
-        run.setPrefSize(17.0, 17.0);
-        stop.setPrefSize(17.0, 17.0);
+        run.setPrefSize(17.0, 17.0)
+        stop.setPrefSize(17.0, 17.0)
 
         runImage.isPreserveRatio = true
         runImage.fitWidth = run.prefWidth
@@ -184,16 +202,17 @@ class Simulator : Application() {
         stop.graphic = stopImage
         stop.contentDisplay = ContentDisplay.GRAPHIC_ONLY
 
-        addTrajectoryButton.setOnAction { proposedTrajectories.add(FXTrajectory("Forward", "0")) }
+        addTrajectoryButton.setOnAction {
+            trajectoryTable.items.add(FXTrajectory(FXAction.FORWARD, "10"))
+            trajectoriesModified = true
+        }
         run.setOnAction {
+            if (trajectoriesModified) stopSimulation()
             timeline.play()
             simulate = true
         }
         stop.setOnAction {
-            simulate = false
-            resetValues()
-            robot.moveTo(startPose.in2px)
-            timeline.play()
+            stopSimulation()
         }
 
         buttonBar.children.addAll(addTrajectoryButton, run, stop)
@@ -201,36 +220,104 @@ class Simulator : Application() {
     }
 
     private fun initTrajectoryTable() {
-        val trajectoryTable = TableView<FXTrajectory>()
-        val actionColumn = TableColumn<FXTrajectory, String>("Action")
+        val actionColumn = TableColumn<FXTrajectory, FXAction>("Action")
         val quantificationColumn = TableColumn<FXTrajectory, String>("in/deg")
 
         quantificationColumn.style = "-fx-alignment: CENTER-LEFT;"
         quantificationColumn.cellValueFactory = PropertyValueFactory("Quantification")
         quantificationColumn.cellFactory = TextFieldTableCell.forTableColumn()
         quantificationColumn.setOnEditCommit { t ->
-            if (t.newValue.toDoubleOrNull() != null) {
-                (t.tableView.items[t.tablePosition.row] as FXTrajectory)
-                    .setQuantification(t.newValue)
+            val value = t.newValue.toDoubleOrNull()
+            val prevValue = trajectoryTable.items[t.tablePosition.row]
+            // Note that turns are currently allowed to have negative values
+            if (value != null && (value > 0 || prevValue.getAction() == FXAction.TURN)) {
+                trajectoryTable.items[t.tablePosition.row] = prevValue.newQuantification(t.newValue)
             } else expectedDoubleError.showAndWait()
+            trajectoriesModified = true
         }
         quantificationColumn.isSortable = false
 
-        actionColumn.minWidth = 110.0
-        actionColumn.cellValueFactory = PropertyValueFactory("Action")
-        actionColumn.cellFactory = ComboBoxTableCell.forTableColumn(actionOptions)
+        actionColumn.minWidth = 160.0
+        actionColumn.setCellValueFactory { cellData -> cellData.value.actionAsString() }
+
         actionColumn.setCellFactory {
-            val combo = ComboBox(actionOptions)
+            val combo: ComboBox<FXAction> = ComboBox(actionOptions)
             val cell = ActionCell(combo)
-            combo.setOnAction { trajectoryTable.items[cell.index].setAction(combo.value) }
+            combo.setOnAction {
+                trajectoriesModified = true
+                trajectoryTable.items[cell.index] = trajectoryTable.items[cell.index].newAction(combo.value)
+            }
             cell
         }
         actionColumn.isSortable = false
 
-        trajectoryTable.columns.setAll(actionColumn, quantificationColumn)
+        // To make the table draggable
+        trajectoryTable.setRowFactory {
+            val row: TableRow<FXTrajectory> = TableRow()
+            row.setOnDragDetected { event ->
+                if (!row.isEmpty) {
+                    val index = row.index
+                    selections.clear()
+                    val items = trajectoryTable.selectionModel.selectedItems
+                    items.forEach { selections.add(it) }
+                    val db = row.startDragAndDrop(TransferMode.MOVE)
+                    db.dragView = row.snapshot(null, null)
+                    val cc = ClipboardContent()
+                    cc[serializedMimeType] = index
+                    db.setContent(cc)
+                    event.consume()
+                }
+            }
+            row.setOnDragOver { event ->
+                val db = event.dragboard
+                if (db.hasContent(serializedMimeType) && row.index != db.getContent(serializedMimeType) as Int) {
+                    event.acceptTransferModes(*TransferMode.COPY_OR_MOVE)
+                    event.consume()
+                }
+            }
+            row.setOnDragDropped { event ->
+                val db = event.dragboard
+                if (db.hasContent(serializedMimeType)) {
+                    var dI: FXTrajectory? = null
+                    var dropIndex = if (row.isEmpty) {
+                        trajectoryTable.items.size
+                    } else {
+                        dI = trajectoryTable.items[row.index]
+                        row.index
+                    }
+                    var delta = 0
+                    if (dI != null) while (selections.contains(dI)) {
+                        delta = 1
+                        --dropIndex
+                        if (dropIndex < 0) {
+                            dI = null
+                            dropIndex = 0
+                            break
+                        }
+                        dI = trajectoryTable.items[dropIndex]
+                    }
+                    selections.forEach { trajectoryTable.items.remove(it) }
+                    if (dI != null) dropIndex = trajectoryTable.items.indexOf(dI) + delta
+                    else if (dropIndex != 0) dropIndex = trajectoryTable.items.size
+                    trajectoryTable.selectionModel.clearSelection()
+                    selections.forEach {
+                        trajectoryTable.items.add(dropIndex, it)
+                        trajectoryTable.selectionModel.select(dropIndex)
+                        dropIndex++
+                    }
+                    event.isDropCompleted = true
+                    selections.clear()
+                    event.consume()
+                }
+            }
+            row
+        }
+
+        trajectoryTable.items.add(FXTrajectory(FXAction.FORWARD, "10"))
+        trajectoryTable.columns.addAll(actionColumn, quantificationColumn)
+        trajectoryTable.selectionModel.selectionMode = SelectionMode.MULTIPLE
         trajectoryTable.isEditable = true
         trajectoryTable.placeholder = Label("No trajectories added")
-        trajectoryTable.items = proposedTrajectories
 
         builder.children.add(trajectoryTable)
     }
@@ -250,6 +337,7 @@ class Simulator : Application() {
     }
 
     private fun simulationLoop(gc: GraphicsContext) {
+        if (trajectoriesModified) stopSimulation()
         gc.drawImage(field, 0.0, 0.0)
         if (simulate) {
             when (val segment = sequence.get(segmentIndex)) {
@@ -262,7 +350,7 @@ class Simulator : Application() {
         // Render everything
         robot.render(gc)
         // Draw the robot's trajectory
-        sequence.sequenceList.forEach { drawTrajectory(gc, it) }
+        sequence.sequenceList?.forEach { drawTrajectory(gc, it) }
         // Draw the backboard score
         gc.textAlign = TextAlignment.CENTER
         gc.textBaseline = VPos.CENTER
@@ -282,7 +370,17 @@ class Simulator : Application() {
         pixelPositions.forEach { (x, y) -> gc.drawImage(pixel, x - pixel.width / 2, y - pixel.height / 2) }
         handleCollisions()
         // Stop the animation once we finish the final segment
-        if (segmentIndex == sequence.size()) timeline.stop()
+        if (segmentIndex == sequence.size()) {
+            timeline.stop()
+            resetValues()
+        }
+    }
+
+    private fun stopSimulation() {
+        simulate = false
+        resetValues()
+        robot.moveTo(startPose.in2px)
+        timeline.play()
     }
 
     private fun resetValues() {
@@ -292,7 +390,9 @@ class Simulator : Application() {
         prevPose = startPose
         startTime = Double.NaN
         sequence = getTrajectorySequence()
+        trajectoryDurations = sequence.sequenceList?.map { it.duration } ?: emptyList()
         segmentIndex = 0
+        trajectoriesModified = false
     }
 
     private fun handleCollisions() {
@@ -382,25 +482,37 @@ class Simulator : Application() {
     }
 
     private fun getTrajectorySequence(): TrajectorySequence {
-        return TrajectorySequence(
-            listOf(
-                backward(2.0),
-                strafeLeft(5.5),
-                backward(22.0),
-                turn((-90.0).toRadians),
-                forward(10.0),
-                backward(11.0),
-                turn((-15.0).toRadians),
-                dropPixel(),
-                turn(15.0.toRadians),
-                strafeRight(35.0),
-                turn(180.0.toRadians),
-                backward(53.0),
-                strafeRight(34.5),
-                backward(1.8),
-                dropPixelOnBoard()
-            )
-        )
+        return TrajectorySequence(trajectoryTable.items.map { (action, a) ->
+            val amount = a.toDouble()
+            when (action) {
+                FXAction.FORWARD -> forward(amount)
+                FXAction.BACKWARD -> backward(amount)
+                FXAction.STRAFE_LEFT -> strafeLeft(amount)
+                FXAction.STRAFE_RIGHT -> strafeRight(amount)
+                FXAction.TURN -> turn(amount.toRadians)
+                FXAction.DROP_PIXEL -> dropPixel()
+                FXAction.DROP_PIXEL_ON_BOARD -> dropPixelOnBoard()
+            }
+        })
+//        return TrajectorySequence(
+//            listOf(
+//                backward(2.0),
+//                strafeLeft(5.5),
+//                backward(22.0),
+//                turn((-90.0).toRadians),
+//                forward(10.0),
+//                backward(11.0),
+//                turn((-15.0).toRadians),
+//                dropPixel(),
+//                turn(15.0.toRadians),
+//                strafeRight(35.0),
+//                turn(180.0.toRadians),
+//                backward(53.0),
+//                strafeRight(34.5),
+//                backward(1.8),
+//                dropPixelOnBoard()
+//            )
+//        )
     }
 
     private fun forward(distance: Double): TrajectorySegment {
@@ -457,14 +569,13 @@ class Simulator : Application() {
         val time = currentTime()
         return time - startTime - prevTrajectoryDuration
     }
-
-
 }
 
 val Double.toRadians get() = Math.toRadians(this)
 val Double.toDegrees get() = Math.toDegrees(this)
 val Rectangle2D.centerPointX get() = this.minX + this.width / 2
 val Rectangle2D.centerPointY get() = this.minY + this.height / 2
+
 
 fun main(args: Array<String>) {
     Application.launch(Simulator::class.java, *args)

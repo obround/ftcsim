@@ -1,5 +1,4 @@
 import com.acmerobotics.roadrunner.geometry.Pose2d
-import com.acmerobotics.roadrunner.geometry.Vector2d
 import javafx.geometry.Rectangle2D
 import javafx.scene.canvas.GraphicsContext
 import javafx.scene.image.Image

@@ -10,7 +10,7 @@ public class TrajectorySequence {
     public final List<SequenceSegment> sequenceList;
 
     public TrajectorySequence(List<SequenceSegment> sequenceList) {
-        if (sequenceList.isEmpty()) throw new EmptySequenceException();
+//        if (sequenceList.isEmpty()) throw new EmptySequenceException();
 
         this.sequenceList = Collections.unmodifiableList(sequenceList);
     }
@@ -34,10 +34,12 @@ public class TrajectorySequence {
     }
 
     public SequenceSegment get(int i) {
+        if (sequenceList.isEmpty()) return null;
         return sequenceList.get(i);
     }
 
     public int size() {
+        if (sequenceList.isEmpty()) return -1;
         return sequenceList.size();
     }
 }
