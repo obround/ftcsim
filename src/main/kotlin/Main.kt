@@ -121,6 +121,7 @@ class Simulator : Application() {
     private val canvas = Canvas(field.width, field.height)
     private val builder = VBox()
     private lateinit var timeline: Timeline
+    private val imageButtonRadius = 40.0
     private val collisionError = Alert(
         Alert.AlertType.ERROR,
         "ur skill issue got the opps ded crying",
@@ -180,30 +181,24 @@ class Simulator : Application() {
 
     private fun initButtons() {
         val buttonBar = HBox()
-        val runImage = ImageView("/run.png")
-        val stopImage = ImageView("/stop.png")
-
-        val addTrajectoryButton = Button("Add trajectory")
+        val add = Button("Add")
+        val remove = Button("Remove")
         val run = Button("Run")
         val stop = Button("Stop")
 
         buttonBar.spacing = 4.0
 
-        run.setPrefSize(17.0, 17.0)
-        stop.setPrefSize(17.0, 17.0)
+        setupImageButton(add, "/add.png")
+        setupImageButton(remove, "/remove.png")
+        setupImageButton(run, "/run.png")
+        setupImageButton(stop, "/stop.png")
 
-        runImage.isPreserveRatio = true
-        runImage.fitWidth = run.prefWidth
-        run.graphic = runImage
-        run.contentDisplay = ContentDisplay.GRAPHIC_ONLY
-
-        stopImage.isPreserveRatio = true
-        stopImage.fitWidth = stop.prefWidth
-        stop.graphic = stopImage
-        stop.contentDisplay = ContentDisplay.GRAPHIC_ONLY
-
-        addTrajectoryButton.setOnAction {
+        add.setOnAction {
             trajectoryTable.items.add(FXTrajectory(FXAction.FORWARD, "10"))
+            trajectoriesModified = true
+        }
+        remove.setOnAction {
+            trajectoryTable.selectionModel.selectedItems.toList().forEach { trajectoryTable.items.remove(it) }
             trajectoriesModified = true
         }
         run.setOnAction {
@@ -215,7 +210,7 @@ class Simulator : Application() {
             stopSimulation()
         }
 
-        buttonBar.children.addAll(addTrajectoryButton, run, stop)
+        buttonBar.children.addAll(add, remove, run, stop)
         builder.children.add(buttonBar)
     }
 
@@ -239,7 +234,6 @@ class Simulator : Application() {
 
         actionColumn.minWidth = 160.0
         actionColumn.setCellValueFactory { cellData -> cellData.value.actionAsString() }
-
         actionColumn.setCellFactory {
             val combo: ComboBox<FXAction> = ComboBox(actionOptions)
             val cell = ActionCell(combo)
@@ -315,7 +309,7 @@ class Simulator : Application() {
 
         trajectoryTable.items.add(FXTrajectory(FXAction.FORWARD, "10"))
         trajectoryTable.columns.addAll(actionColumn, quantificationColumn)
-        trajectoryTable.selectionModel.selectionMode = SelectionMode.MULTIPLE
+//        trajectoryTable.selectionModel.selectionMode = SelectionMode.MULTIPLE
         trajectoryTable.isEditable = true
         trajectoryTable.placeholder = Label("No trajectories added")
 
@@ -568,6 +562,19 @@ class Simulator : Application() {
 
         val time = currentTime()
         return time - startTime - prevTrajectoryDuration
+    }
+
+    private fun setupImageButton(button: Button, imagePath: String) {
+        val image = ImageView(imagePath)
+        button.style = "-fx-background-radius: 5em;"
+        button.minWidth = imageButtonRadius
+        button.minHeight = imageButtonRadius
+        button.maxWidth = imageButtonRadius
+        button.maxHeight = imageButtonRadius
+        image.isPreserveRatio = true
+        image.fitWidth = button.prefWidth
+        button.graphic = image
+        button.contentDisplay = ContentDisplay.GRAPHIC_ONLY
     }
 }
 

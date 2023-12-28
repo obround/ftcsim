@@ -26,7 +26,7 @@ kotlin {
 }
 
 javafx {
-    version = "15.0.1"
+    version = "21.0.1"
     modules = listOf("javafx.controls")
 }
 
