@@ -198,7 +198,10 @@ class Simulator : Application() {
             trajectoriesModified = true
         }
         remove.setOnAction {
-            trajectoryTable.selectionModel.selectedItems.toList().forEach { trajectoryTable.items.remove(it) }
+            // We sort the indices in ascending order, and THEN remove the values from the table to avoid shifting the
+            // other indices out of their position
+            trajectoryTable.selectionModel.selectedIndices.sorted().reversed()
+                .forEach { trajectoryTable.items.removeAt(it) }
             trajectoriesModified = true
         }
         run.setOnAction {
@@ -226,20 +229,27 @@ class Simulator : Application() {
             val prevValue = trajectoryTable.items[t.tablePosition.row]
             // Note that turns are currently allowed to have negative values
             if (value != null && (value > 0 || prevValue.getAction() == FXAction.TURN)) {
-                trajectoryTable.items[t.tablePosition.row] = prevValue.newQuantification(t.newValue)
+                val position = t.tablePosition.row
+                val prevAction = trajectoryTable.items[position].getAction()
+                // To whomever is maintaining this code, I DARE YOU to simplify these two lines; Even if you're smart,
+                // and replace it with trajectoryTable.refresh(), it's not going to refresh the table internally
+                trajectoryTable.items.removeAt(position)
+                trajectoryTable.items.add(position, FXTrajectory(prevAction, t.newValue))
+                trajectoriesModified = true
             } else expectedDoubleError.showAndWait()
-            trajectoriesModified = true
         }
         quantificationColumn.isSortable = false
 
         actionColumn.minWidth = 160.0
-        actionColumn.setCellValueFactory { cellData -> cellData.value.actionAsString() }
+        actionColumn.setCellValueFactory { cellData -> cellData.value.actionProperty() }
         actionColumn.setCellFactory {
             val combo: ComboBox<FXAction> = ComboBox(actionOptions)
             val cell = ActionCell(combo)
             combo.setOnAction {
+                val prevQuantification = trajectoryTable.items[cell.index].getQuantification()
+                trajectoryTable.items.removeAt(cell.index)
+                trajectoryTable.items.add(cell.index, FXTrajectory(combo.value, prevQuantification))
                 trajectoriesModified = true
-                trajectoryTable.items[cell.index] = trajectoryTable.items[cell.index].newAction(combo.value)
             }
             cell
         }
@@ -309,7 +319,7 @@ class Simulator : Application() {
 
         trajectoryTable.items.add(FXTrajectory(FXAction.FORWARD, "10"))
         trajectoryTable.columns.addAll(actionColumn, quantificationColumn)
-//        trajectoryTable.selectionModel.selectionMode = SelectionMode.MULTIPLE
+        trajectoryTable.selectionModel.selectionMode = SelectionMode.MULTIPLE
         trajectoryTable.isEditable = true
         trajectoryTable.placeholder = Label("No trajectories added")
 

@@ -23,10 +23,5 @@ data class FXTrajectory(val a: FXAction, val q: String) {
     // The get functions seem unused, but they are used internally by JavaFX
     fun getAction(): FXAction = action.get()
     fun getQuantification(): String = quantification.get()
-
-    // These functions create a new FXTrajectory because while they are stored in the table, they are apparently
-    // immutable, and this was causing some nasty bugs. So patchy solution, this is a TODO
-    fun newAction(new: FXAction) = FXTrajectory(new, getQuantification())
-    fun newQuantification(new: String) = FXTrajectory(getAction(), new)
-    fun actionAsString() = action
+    fun actionProperty() = action
 }
