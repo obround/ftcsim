@@ -28,8 +28,11 @@ import javafx.scene.layout.VBox
 import javafx.scene.paint.Color
 import javafx.scene.text.Font
 import javafx.scene.text.TextAlignment
+import javafx.stage.FileChooser
 import javafx.stage.Stage
 import javafx.util.Duration
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import trajectorysequence.TrajectorySequence
 import trajectorysequence.TrajectorySequenceBuilder
 import trajectorysequence.TrajectoryType
@@ -37,6 +40,7 @@ import trajectorysequence.sequencesegment.SequenceSegment
 import trajectorysequence.sequencesegment.TrajectorySegment
 import trajectorysequence.sequencesegment.TurnSegment
 import trajectorysequence.sequencesegment.WaitSegment
+import java.io.File
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -153,7 +157,7 @@ class Simulator : Application() {
 
         initLogo()
         initTrajectoryTable()
-        initButtons()
+        initButtons(stage)
         initErrors()
 
         stage.title = "FTCSIM"
@@ -179,12 +183,14 @@ class Simulator : Application() {
         expectedDoubleError.headerText = "Expected a decimal value for the specified field"
     }
 
-    private fun initButtons() {
+    private fun initButtons(stage: Stage) {
         val buttonBar = HBox()
         val add = Button("Add")
         val remove = Button("Remove")
         val run = Button("Run")
         val stop = Button("Stop")
+        val save = Button("Save")
+        val open = Button("Open")
 
         buttonBar.spacing = 4.0
 
@@ -192,6 +198,8 @@ class Simulator : Application() {
         setupImageButton(remove, "/remove.png")
         setupImageButton(run, "/run.png")
         setupImageButton(stop, "/stop.png")
+        setupImageButton(save, "/save.png")
+        setupImageButton(open, "/open.png")
 
         add.setOnAction {
             trajectoryTable.items.add(FXTrajectory(FXAction.FORWARD, "10"))
@@ -209,11 +217,31 @@ class Simulator : Application() {
             timeline.play()
             simulate = true
         }
-        stop.setOnAction {
+        stop.setOnAction { stopSimulation() }
+        save.setOnAction {
+            val serialized = Json.encodeToString(trajectoryTable.items.toList())
+            val fileChooser = FileChooser()
+            fileChooser.title = "Save"
+            fileChooser.initialFileName = "trajectory.ftcsim"
+            val selectedFile = fileChooser.showSaveDialog(stage)
+            if (selectedFile != null)
+                File(selectedFile.toPath().toString()).printWriter().use { out -> out.println(serialized) }
+        }
+        open.setOnAction {
+            val fileChooser = FileChooser()
+            fileChooser.title = "Open"
+            val selectedFile = fileChooser.showOpenDialog(stage)
+            if (selectedFile != null) {
+                val text = File(selectedFile.toPath().toString()).readText()
+                val deserialized = Json.decodeFromString<List<FXTrajectory>>(text)
+                // TODO: Add prompt asking "are you sure you want to delete the current trajectories"
+                trajectoryTable.items.clear()
+                trajectoryTable.items.addAll(deserialized)
+            }
             stopSimulation()
         }
 
-        buttonBar.children.addAll(add, remove, run, stop)
+        buttonBar.children.addAll(add, remove, run, stop, save, open)
         builder.children.add(buttonBar)
     }
 

@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm") version "1.9.0"
+    kotlin("plugin.serialization") version "1.9.22"
     id("org.openjfx.javafxplugin") version "0.0.9"
     application
 }
@@ -15,6 +16,7 @@ repositories {
 dependencies {
     testImplementation(kotlin("test"))
     implementation("com.acmerobotics.roadrunner:core:0.5.5")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 }
 
 tasks.test {
