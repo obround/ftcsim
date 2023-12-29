@@ -12,6 +12,9 @@ Implemented (v1.0):
 To implement (v1.1):
 - Custom robot starting position (currently hard coded)
 - Timing
+- Proper error handling
+- Documentation
+- New theme
 - New icon set
 
 ## Installation
