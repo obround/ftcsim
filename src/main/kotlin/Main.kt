@@ -49,6 +49,7 @@ class Simulator : Application() {
     // CONSTANTS
     private val fps = 60  // Frames per second
     private val numberSamples = 50  // Number of samples when drawing the trajectory
+    // TODO: Make this changeable
     private val startPose = Pose2d(0.0, -24.0 * 4 - 6.681 + 2, 180.0.toRadians)  // x, y, angle
     private val fieldDimPixels = 640.0  // 640px x 640px
     private val fieldDimReal = 144.0  // 144in x 144in
@@ -157,6 +158,7 @@ class Simulator : Application() {
 
         initLogo()
         initTrajectoryTable()
+        // Requires the stage to create the file dialogs for save/open
         initButtons(stage)
         initErrors()
 
@@ -191,6 +193,7 @@ class Simulator : Application() {
         val stop = Button("Stop")
         val save = Button("Save")
         val open = Button("Open")
+        val export = Button("Export")
 
         buttonBar.spacing = 4.0
 
@@ -200,6 +203,7 @@ class Simulator : Application() {
         setupImageButton(stop, "/stop.png")
         setupImageButton(save, "/save.png")
         setupImageButton(open, "/open.png")
+        setupImageButton(export, "/export.png")
 
         add.setOnAction {
             trajectoryTable.items.add(FXTrajectory(FXAction.FORWARD, "10"))
@@ -218,30 +222,11 @@ class Simulator : Application() {
             simulate = true
         }
         stop.setOnAction { stopSimulation() }
-        save.setOnAction {
-            val serialized = Json.encodeToString(trajectoryTable.items.toList())
-            val fileChooser = FileChooser()
-            fileChooser.title = "Save"
-            fileChooser.initialFileName = "trajectory.ftcsim"
-            val selectedFile = fileChooser.showSaveDialog(stage)
-            if (selectedFile != null)
-                File(selectedFile.toPath().toString()).printWriter().use { out -> out.println(serialized) }
-        }
-        open.setOnAction {
-            val fileChooser = FileChooser()
-            fileChooser.title = "Open"
-            val selectedFile = fileChooser.showOpenDialog(stage)
-            if (selectedFile != null) {
-                val text = File(selectedFile.toPath().toString()).readText()
-                val deserialized = Json.decodeFromString<List<FXTrajectory>>(text)
-                // TODO: Add prompt asking "are you sure you want to delete the current trajectories"
-                trajectoryTable.items.clear()
-                trajectoryTable.items.addAll(deserialized)
-            }
-            stopSimulation()
-        }
+        save.setOnAction { saveTrajectory(stage) }
+        open.setOnAction { openTrajectory(stage) }
+        export.setOnAction { exportTrajectory() }
 
-        buttonBar.children.addAll(add, remove, run, stop, save, open)
+        buttonBar.children.addAll(add, remove, run, stop, save, open, export)
         builder.children.add(buttonBar)
     }
 
@@ -366,6 +351,44 @@ class Simulator : Application() {
         topLabel.alignment = Pos.CENTER
 
         builder.children.add(topLabel)
+    }
+
+    private fun saveTrajectory(stage: Stage) {
+        val serialized = Json.encodeToString(trajectoryTable.items.toList())
+        val fileChooser = FileChooser()
+        fileChooser.title = "Save"
+        fileChooser.initialFileName = "trajectory.ftcsim"
+        val selectedFile = fileChooser.showSaveDialog(stage)
+        if (selectedFile != null)
+            File(selectedFile.toPath().toString()).printWriter().use { out -> out.println(serialized) }
+    }
+
+    private fun openTrajectory(stage: Stage) {
+        val fileChooser = FileChooser()
+        fileChooser.title = "Open"
+        val selectedFile = fileChooser.showOpenDialog(stage)
+        if (selectedFile != null) {
+            val text = File(selectedFile.toPath().toString()).readText()
+            val deserialized = Json.decodeFromString<List<FXTrajectory>>(text)
+            // TODO: Add prompt asking "are you sure you want to delete the current trajectories"
+            trajectoryTable.items.clear()
+            trajectoryTable.items.addAll(deserialized)
+        }
+        stopSimulation()
+    }
+
+    private fun exportTrajectory() {
+        val body = trajectoryTable.items.joinToString(separator = "\n    ") { it.exportable() + ";" }
+        val export = "private void movement() {\n    $body\n}"
+        val popup = Stage()
+
+        val copyableField = TextArea()
+        copyableField.setPrefSize(600.0, 400.0)
+        copyableField.isEditable = false
+        copyableField.text = export
+
+        popup.scene = Scene(copyableField)
+        popup.show()
     }
 
     private fun simulationLoop(gc: GraphicsContext) {
@@ -526,25 +549,6 @@ class Simulator : Application() {
                 FXAction.DROP_PIXEL_ON_BOARD -> dropPixelOnBoard()
             }
         })
-//        return TrajectorySequence(
-//            listOf(
-//                backward(2.0),
-//                strafeLeft(5.5),
-//                backward(22.0),
-//                turn((-90.0).toRadians),
-//                forward(10.0),
-//                backward(11.0),
-//                turn((-15.0).toRadians),
-//                dropPixel(),
-//                turn(15.0.toRadians),
-//                strafeRight(35.0),
-//                turn(180.0.toRadians),
-//                backward(53.0),
-//                strafeRight(34.5),
-//                backward(1.8),
-//                dropPixelOnBoard()
-//            )
-//        )
     }
 
     private fun forward(distance: Double): TrajectorySegment {
