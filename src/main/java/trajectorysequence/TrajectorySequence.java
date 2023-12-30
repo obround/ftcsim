@@ -10,8 +10,6 @@ public class TrajectorySequence {
     public final List<SequenceSegment> sequenceList;
 
     public TrajectorySequence(List<SequenceSegment> sequenceList) {
-//        if (sequenceList.isEmpty()) throw new EmptySequenceException();
-
         this.sequenceList = Collections.unmodifiableList(sequenceList);
     }
 

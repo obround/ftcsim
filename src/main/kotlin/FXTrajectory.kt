@@ -58,6 +58,7 @@ data class FXTrajectory(
     @Serializable(with = SSPSerializer::class)
     private val maxAccel = SimpleStringProperty(mA)
 
+    // TODO: Switch to this.copy(...)
     fun newAction(a: FXAction) = FXTrajectory(a, getQuantification(), getMaxVel(), getMaxAngVel(), getMaxAccel())
     fun newQuantification(q: String) = FXTrajectory(getAction(), q, getMaxVel(), getMaxAngVel(), getMaxAccel())
     fun newMaxVel(mV: String) = FXTrajectory(getAction(), getQuantification(), mV, getMaxAngVel(), getMaxAccel())
@@ -78,9 +79,9 @@ data class FXTrajectory(
     fun exportable() = when (val action = getAction()) {
         FXAction.TURN -> "${action.exportableFunction}(${getQuantification()})"
         else -> {
-            val mV = getQuantification().isOrElse("-", "maxVelocity")
-            val mAV = getQuantification().isOrElse("-", "maxAngularVelocity")
-            val mA = getQuantification().isOrElse("-", "maxAcceleration")
+            val mV = getMaxVel().isOrElse("-", "maxVelocity")
+            val mAV = getMaxAngVel().isOrElse("-", "maxAngularVelocity")
+            val mA = getMaxAccel().isOrElse("-", "maxAcceleration")
             "${action.exportableFunction}(${getQuantification()}, ${mV}, ${mAV}, ${mA}, trackWidth)"
         }
     }

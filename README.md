@@ -23,6 +23,4 @@ Trajectory planner and simulator for FTC Centerstage.
 - Score counting
 
 ### Todo (v1.1):
-- Custom robot starting position (currently hard coded)
 - Proper error handling
-- New icon set

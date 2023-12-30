@@ -1,15 +1,30 @@
+import com.acmerobotics.roadrunner.geometry.Pose2d
 import javafx.beans.property.SimpleObjectProperty
 import javafx.beans.property.SimpleStringProperty
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.DoubleArraySerializer
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
-import kotlinx.serialization.encoding.Decoder
-import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.encoding.*
 
 
 /**
- * Serializer for the SimpleObjectProperty class of FXAction. Simply serializes/deserializes the
- * string form of the FXAction.
+ * Tuple containing the entire state of the simulator when the trajectory is saved.
+ */
+@Serializable
+data class SerializeQuintuple(
+    val trajectory: List<FXTrajectory>,
+    @Serializable(with = Pose2dSerializer::class) val startPose: Pose2d,
+    val specifiedMaxVel: Double,
+    val specifiedMaxAngVel: Double,
+    val specifiedMaxAccel: Double
+)
+
+
+/**
+ * Serializer for the `SimpleObjectProperty` class of `FXAction`. Simply serializes/deserializes the
+ * string form of the `FXAction`.
  */
 object SOPSerializer : KSerializer<SimpleObjectProperty<FXAction>> {
     override val descriptor = PrimitiveSerialDescriptor("SimpleObjectProperty", PrimitiveKind.STRING)
@@ -24,7 +39,7 @@ object SOPSerializer : KSerializer<SimpleObjectProperty<FXAction>> {
 }
 
 /**
- * Serializer for the SimpleStringProperty. Simply serializes/deserializes its string parameter.
+ * Serializer for the `SimpleStringProperty`. Simply serializes/deserializes its string parameter.
  */
 object SSPSerializer : KSerializer<SimpleStringProperty> {
     override val descriptor = PrimitiveSerialDescriptor("SimpleObjectProperty", PrimitiveKind.STRING)
@@ -35,5 +50,24 @@ object SSPSerializer : KSerializer<SimpleStringProperty> {
 
     override fun deserialize(decoder: Decoder): SimpleStringProperty {
         return SimpleStringProperty(decoder.decodeString())
+    }
+}
+
+
+/**
+ * Serializer for `Pose2d`. Since `Pose2d` is a data class, it should be possible to simply annotate is with
+ * `@Serializable`, however that is a library, so instead we create a serializer like this.
+ */
+object Pose2dSerializer : KSerializer<Pose2d> {
+    private val delegateSerializer = DoubleArraySerializer()
+    override val descriptor = PrimitiveSerialDescriptor("Pose2d", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: Pose2d) {
+        encoder.encodeSerializableValue(delegateSerializer, doubleArrayOf(value.x, value.y, value.heading))
+    }
+
+    override fun deserialize(decoder: Decoder): Pose2d {
+        val array = decoder.decodeSerializableValue(delegateSerializer)
+        return Pose2d(array[0], array[1], array[2])
     }
 }

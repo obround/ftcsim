@@ -22,6 +22,7 @@ import javafx.scene.image.ImageView
 import javafx.scene.input.ClipboardContent
 import javafx.scene.input.DataFormat
 import javafx.scene.input.TransferMode
+import javafx.scene.layout.GridPane
 import javafx.scene.layout.HBox
 import javafx.scene.layout.Priority
 import javafx.scene.layout.VBox
@@ -53,26 +54,37 @@ import kotlin.math.sin
  *     2. `Simulator.simulationLoop(...)` is called `fps` times per second
  *     3. This renders the canvas and animates the robot's movements
  *  Notes:
- *     - When modifying code here, it is very easy to forget to convert to pixels or inches
+ *     - When modifying code here, it is easy to forget to convert to pixels or inches
  */
 class Simulator : Application() {
-    // CONSTANTS
+    /*****************
+     * CONSTANTS
+     *****************/
     private val fps = 60  // Frames per second
     private val numberSamples = 50  // Number of samples when drawing the trajectory
 
     // TODO: Make this changeable
-    private val startPose = Pose2d(0.0, -24.0 * 4 - 6.681 + 2, 180.0.toRadians)  // x, y, angle
+    private var startPose = Pose2d(0.0, -24.0 * 4 - 6.681 + 2, 180.0.toRadians)  // x, y, angle
     private val fieldDimPixels = 640.0  // 640px x 640px
     private val fieldDimReal = 144.0  // 144in x 144in
     private val robotWidth = 17.995  // 17.995in (rear to intake tip)
     private val robotLength = 17.319 // 17.319in (side to side)
     private val trackWidth = 12.7  // Distance between wheels
+
+    // Drive Constants
     private val maxVel = 60.0  // mph
     private val maxAccel = 60.0  // mph
     private val maxAngVel = 5.528055275836724  // rad/sec
     private val maxAngAccel = 5.528055275836724  // rad/sec^2
 
-    // COLLISION
+    // Default constants specified for the autonomous programs (e.g. BlueClose.java)
+    private var specifiedMaxVel = 100.0
+    private var specifiedMaxAngVel = 1.75
+    private var specifiedMaxAccel = 100.0
+
+    /*****************
+     * COLLISION
+     *****************/
     // All the following values are in pixels
     private val leftBackdrop = Rectangle2D(105.0, 0.0, 110.0, 55.0)
     private val rightBackdrop = Rectangle2D(425.0, 0.0, 110.0, 55.0)
@@ -91,7 +103,9 @@ class Simulator : Application() {
         trussLeg5
     )
 
-    // IMAGES
+    /*****************
+     * IMAGES
+     *****************/
     private val field = Image("/field.png")
     private val pixel = Image("/pixel_ftc.png")
     private val robot = Robot(
@@ -100,7 +114,9 @@ class Simulator : Application() {
         startPose.in2px
     )
 
-    // OTHER
+    /*****************
+     * CURRENT STATE
+     *****************/
     // Whether the simulation should run or not
     private var simulate = false
 
@@ -115,6 +131,7 @@ class Simulator : Application() {
 
     // Internally used when creating trajectories
     private var prevPose = startPose
+
     private val velocityConstraint = createVelocityConstraint(maxVel, maxAngVel)
     private val accelerationConstraint = createAccelerationConstraint(maxAccel)
 
@@ -136,36 +153,47 @@ class Simulator : Application() {
     // The total trajectory duration
     private var totalDuration = trajectoryDurations.sum()
 
-    // CONVERSIONS
+    /*****************
+     * CONVERSIONS
+     *****************/
     private val Double.in2px get() = this * fieldDimPixels / fieldDimReal
 
     // Silently converts the heading to degrees
     private val Pose2d.in2px get() = Pose2d(this.x.in2px, this.y.in2px, heading.toDegrees)
 
+    /*****************
+     * UI
+     *****************/
     private val windowWidth = field.width + 600
     private val windowHeight = field.height + 50
 
-    // UI
     // For drag and drop of rows in the table
     private val serializedMimeType = DataFormat("application/x-java-serialized-object")
     private val selections = mutableListOf<FXTrajectory>()
 
     // Has the overall trajectory been modified?
     private var trajectoriesModified = false
+
     private val root = HBox()
     private val canvas = Canvas(field.width, field.height)
+
+    // The right side of the GUI
     private val builder = VBox()
     private lateinit var timeline: Timeline
     private val timer = ProgressBar(0.0)
     private val timeCount = Label("- / -")
+
+    // When the robot collides with a fixed object on the field
     private val collisionError = Alert(
         Alert.AlertType.ERROR,
         "ur skill issue got the opps ded crying",
         ButtonType.OK
     )
+
+    // When an invalid non-double (or in some cases non-positive) value is supplied
     private val expectedDoubleError = Alert(
         Alert.AlertType.ERROR,
-        "why tf would u not put a positive decimal bruh",
+        "why tf would u not put a decimal bruh",
         ButtonType.OK
     )
 
@@ -249,6 +277,7 @@ class Simulator : Application() {
         val save = Button("Save")
         val open = Button("Open")
         val export = Button("Export")
+        val settings = Button("Settings")
 
         buttonBar.spacing = 4.0
 
@@ -259,14 +288,16 @@ class Simulator : Application() {
         setupImageButton(save, "/save.png")
         setupImageButton(open, "/open.png")
         setupImageButton(export, "/export.png")
+        setupImageButton(settings, "/settings.png")
 
         add.setOnAction {
+            // Default segment is Forward 10
             trajectoryTable.items.add(FXTrajectory(FXAction.FORWARD, "10"))
             trajectoriesModified = true
         }
         remove.setOnAction {
-            // We sort the indices in ascending order, and THEN remove the values from the table to avoid shifting the
-            // other indices out of their position
+            // We sort the indices in ascending order, and THEN remove the values from the table to
+            // avoid shifting the other indices out of their position
             trajectoryTable.selectionModel.selectedIndices.sorted().reversed()
                 .forEach { trajectoryTable.items.removeAt(it) }
             trajectoriesModified = true
@@ -276,12 +307,14 @@ class Simulator : Application() {
             timeline.play()
             simulate = true
         }
+
         stop.setOnAction { stopSimulation() }
         save.setOnAction { saveTrajectory(stage) }
         open.setOnAction { openTrajectory(stage) }
         export.setOnAction { exportTrajectory() }
+        settings.setOnAction { openSettings() }
 
-        buttonBar.children.addAll(add, remove, run, stop, save, open, export)
+        buttonBar.children.addAll(add, remove, run, stop, save, open, export, settings)
         builder.children.add(buttonBar)
     }
 
@@ -319,6 +352,7 @@ class Simulator : Application() {
             } else expectedDoubleError.showAndWait()
         }
         col.isSortable = false
+        col.isReorderable = false
     }
 
     /**
@@ -355,6 +389,7 @@ class Simulator : Application() {
             cell
         }
         actionColumn.isSortable = false
+        actionColumn.isReorderable = false
 
         // To make the table rows draggable
         trajectoryTable.setRowFactory {
@@ -418,6 +453,7 @@ class Simulator : Application() {
             row
         }
 
+        // Trajectory table is initialized with Forward 10
         trajectoryTable.items.add(FXTrajectory(FXAction.FORWARD, "10"))
         trajectoryTable.columns.addAll(
             actionColumn,
@@ -430,6 +466,7 @@ class Simulator : Application() {
         // Allows the columns to expand and take up space
         trajectoryTable.columnResizePolicy = TableView.CONSTRAINED_RESIZE_POLICY
         trajectoryTable.isEditable = true
+        // If the table is empty
         trajectoryTable.placeholder = Label("No trajectories added")
 
         builder.children.add(trajectoryTable)
@@ -453,7 +490,16 @@ class Simulator : Application() {
      * Serializes the current trajectory, and then saves it to the user's choice of file
      */
     private fun saveTrajectory(stage: Stage) {
-        val serialized = Json.encodeToString(trajectoryTable.items.toList())
+        // We serialize the entire state of the simulator, not just the trajectory
+        val serialized = Json.encodeToString(
+            SerializeQuintuple(
+                trajectoryTable.items.toList(),
+                startPose,
+                specifiedMaxVel,
+                specifiedMaxAngVel,
+                specifiedMaxAccel
+            )
+        )
         val fileChooser = FileChooser()
         fileChooser.title = "Save"
         fileChooser.initialFileName = "trajectory.ftcsim"
@@ -472,10 +518,14 @@ class Simulator : Application() {
         if (selectedFile != null) {
             val text = File(selectedFile.toPath().toString()).readText()
             // TODO: Verify the text is in fact valid and deserializable
-            val deserialized = Json.decodeFromString<List<FXTrajectory>>(text)
+            val (deserialized, sP, sMV, sMAV, sMA) = Json.decodeFromString<SerializeQuintuple>(text)
             // TODO: Add prompt asking "are you sure you want to delete the current trajectories"
             trajectoryTable.items.clear()
             trajectoryTable.items.addAll(deserialized)
+            startPose = sP
+            specifiedMaxVel = sMV
+            specifiedMaxAngVel = sMAV
+            specifiedMaxAccel = sMA
         }
         stopSimulation()
     }
@@ -494,6 +544,58 @@ class Simulator : Application() {
         copyableField.text = export
 
         popup.scene = Scene(copyableField)
+        popup.show()
+    }
+
+    /**
+     * Creates a popup containing the modifiable configuration of the robot and roadrunner.
+     */
+    private fun openSettings() {
+        val popup = Stage()
+        val grid = GridPane()
+
+        grid.vgap = 4.0
+        grid.hgap = 10.0
+
+        val fields = listOf(
+            Triple("Start Pose (x)", TextField(startPose.x.toString()), "in"),
+            Triple("Start Pose (y)", TextField(startPose.y.toString()), "in"),
+            Triple("Start Pose (heading)", TextField(startPose.heading.toDegrees.toString()), "deg"),
+            Triple("Specified Max Velocity", TextField(specifiedMaxVel.toString()), "mph"),
+            Triple("Specified Max Angular Velocity", TextField(specifiedMaxAngVel.toString()), "rad/sec"),
+            Triple("Specified Max Acceleration", TextField(specifiedMaxAccel.toString()), "mph^2")
+        )
+
+        // There is not forEachIndexed for maps, so we are doing this instead
+        var row = 0
+        fields.forEach { (label, field, units) ->
+            grid.add(Label(label), 0, row)
+            grid.add(field, 1, row)
+            grid.add(Label(units), 2, row)
+            row++
+        }
+
+        val saveButton = Button("Save")
+        saveButton.setOnAction {
+            fields[0].second.text.toDoubleOrNull()?.let { startPose = startPose.copy(x = it) }
+                ?: expectedDoubleError.show()
+            fields[1].second.text.toDoubleOrNull()?.let { startPose = startPose.copy(y = it) }
+                ?: expectedDoubleError.show()
+            fields[2].second.text.toDoubleOrNull()?.let { startPose = startPose.copy(heading = it) }
+                ?: expectedDoubleError.show()
+            fields[3].second.text.toDoubleOrNull()?.let { specifiedMaxVel = it } ?: expectedDoubleError.show()
+            fields[4].second.text.toDoubleOrNull()?.let { specifiedMaxAngVel = it } ?: expectedDoubleError.show()
+            fields[5].second.text.toDoubleOrNull()?.let { specifiedMaxAccel = it } ?: expectedDoubleError.show()
+            popup.close()
+            stopSimulation()
+        }
+
+        val box = VBox()
+        box.padding = Insets(15.0)
+        box.spacing = 7.0
+
+        box.children.addAll(grid, saveButton)
+        popup.scene = Scene(box)
         popup.show()
     }
 
@@ -691,9 +793,9 @@ class Simulator : Application() {
         return TrajectorySequence(trajectoryTable.items.map { (action, q, mV, mAV, mA) ->
             val amount = q.toDouble()
             // "-" represents a default
-            val maxVel = if (mV == "-") maxVel else mV.toDouble()
-            val maxAngVel = if (mAV == "-") maxAngVel else mAV.toDouble()
-            val maxAccel = if (mA == "-") maxAccel else mA.toDouble()
+            val maxVel = if (mV == "-") specifiedMaxVel else mV.toDouble()
+            val maxAngVel = if (mAV == "-") specifiedMaxAngVel else mAV.toDouble()
+            val maxAccel = if (mA == "-") specifiedMaxAccel else mA.toDouble()
             when (action) {
                 FXAction.FORWARD -> forward(amount, maxVel, maxAngVel, maxAccel)
                 FXAction.BACKWARD -> backward(amount, maxVel, maxAngVel, maxAccel)
