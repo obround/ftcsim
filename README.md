@@ -9,12 +9,10 @@ Implemented (v1.0):
 - Path highlighting
 - Score counting
 
-To implement (v1.1):
+Todo (v1.1):
 - Custom robot starting position (currently hard coded)
-- Timing
 - Proper error handling
 - Documentation
-- Custom roadrunner parameters
 - New icon set
 
 ## Installation

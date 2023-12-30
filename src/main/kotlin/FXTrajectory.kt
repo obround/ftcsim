@@ -18,20 +18,51 @@ enum class FXAction(private val text: String, val exportableFunction: String) {
 
 
 @Serializable
-data class FXTrajectory(val a: FXAction, val q: String) {
+data class FXTrajectory(
+    val a: FXAction,
+    val q: String,
+    val mV: String = "-",
+    val mAV: String = "-",
+    val mA: String = "-"
+) {
     @Serializable(with = SOPSerializer::class)
     private val action = SimpleObjectProperty(a)
 
     @Serializable(with = SSPSerializer::class)
     private val quantification = SimpleStringProperty(q)
 
-    // The get functions may seem unused, but they are used internally by JavaFX
+    @Serializable(with = SSPSerializer::class)
+    private val maxVel = SimpleStringProperty(mV)
+
+    @Serializable(with = SSPSerializer::class)
+    private val maxAngVel = SimpleStringProperty(mAV)
+
+    @Serializable(with = SSPSerializer::class)
+    private val maxAccel = SimpleStringProperty(mA)
+
+    fun newAction(a: FXAction) = FXTrajectory(a, getQuantification(), getMaxVel(), getMaxAngVel(), getMaxAccel())
+    fun newQuantification(q: String) = FXTrajectory(getAction(), q, getMaxVel(), getMaxAngVel(), getMaxAccel())
+    fun newMaxVel(mV: String) = FXTrajectory(getAction(), getQuantification(), mV, getMaxAngVel(), getMaxAccel())
+    fun newMaxAngVel(mAA: String) = FXTrajectory(getAction(), getQuantification(), getMaxVel(), mAA, getMaxAccel())
+    fun newMaxAccel(mA: String) = FXTrajectory(getAction(), getQuantification(), getMaxVel(), getMaxAngVel(), mA)
+
+    // The get functions may seem unused outside of this class, but they are used internally by JavaFX
     fun getAction(): FXAction = action.get()
     fun getQuantification(): String = quantification.get()
+    fun getMaxVel(): String = maxVel.get()
+    fun getMaxAngVel(): String = maxAngVel.get()
+    fun getMaxAccel(): String = maxAccel.get()
     fun actionProperty() = action
 
     fun exportable() = when (val action = getAction()) {
         FXAction.TURN -> "${action.exportableFunction}(${getQuantification()})"
-        else -> "${action.exportableFunction}(${getQuantification()}, strafeVelocity, maxAngularVelocity, strafeAcceleration, trackWidth)"
+        else -> {
+            val mV = getQuantification().isOrElse("-", "maxVelocity")
+            val mAV = getQuantification().isOrElse("-", "maxAngularVelocity")
+            val mA = getQuantification().isOrElse("-", "maxAcceleration")
+            "${action.exportableFunction}(${getQuantification()}, ${mV}, ${mAV}, ${mA}, trackWidth)"
+        }
     }
+
+    private fun String.isOrElse(cond: String, newValue: String) = if (this == cond) newValue else this
 }

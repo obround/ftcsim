@@ -42,6 +42,7 @@ import trajectorysequence.sequencesegment.TurnSegment
 import trajectorysequence.sequencesegment.WaitSegment
 import java.io.File
 import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.sin
 
 
@@ -49,6 +50,7 @@ class Simulator : Application() {
     // CONSTANTS
     private val fps = 60  // Frames per second
     private val numberSamples = 50  // Number of samples when drawing the trajectory
+
     // TODO: Make this changeable
     private val startPose = Pose2d(0.0, -24.0 * 4 - 6.681 + 2, 180.0.toRadians)  // x, y, angle
     private val fieldDimPixels = 640.0  // 640px x 640px
@@ -94,22 +96,15 @@ class Simulator : Application() {
     private var rightBackDropScore = 0
     private var pixelPositions = mutableListOf<Pair<Double, Double>>()
     private var prevPose = startPose
-    private val velocityConstraint = MinVelocityConstraint(
-        listOf(
-            AngularVelocityConstraint(maxAngVel),
-            MecanumVelocityConstraint(
-                maxVel,
-                trackWidth
-            )
-        )
-    )
-    private val accelerationConstraint = ProfileAccelerationConstraint(maxAccel)
+    private val velocityConstraint = createVelocityConstraint(maxVel, maxAngVel)
+    private val accelerationConstraint = createAccelerationConstraint(maxAccel)
     private var startTime = Double.NaN
     private val trajectoryTable = TableView<FXTrajectory>()
 
     private var sequence = getTrajectorySequence()
     private var segmentIndex = 0
     private var trajectoryDurations = sequence.sequenceList?.map { it.duration } ?: emptyList()
+    private var totalDuration = trajectoryDurations.sum()
 
     // CONVERSIONS
     private val Double.in2px get() = this * fieldDimPixels / fieldDimReal
@@ -126,7 +121,8 @@ class Simulator : Application() {
     private val canvas = Canvas(field.width, field.height)
     private val builder = VBox()
     private lateinit var timeline: Timeline
-    private val imageButtonRadius = 40.0
+    private val timer = ProgressBar(0.0)
+    private val timeCount = Label("- / -")
     private val collisionError = Alert(
         Alert.AlertType.ERROR,
         "ur skill issue got the opps ded crying",
@@ -153,13 +149,14 @@ class Simulator : Application() {
     override fun start(stage: Stage) {
         root.padding = Insets(25.0)
         builder.padding = Insets(0.0, 0.0, 0.0, 25.0)
-        builder.spacing = 15.0
+        builder.spacing = 25.0
         HBox.setHgrow(builder, Priority.ALWAYS)
 
         initLogo()
         initTrajectoryTable()
         // Requires the stage to create the file dialogs for save/open
         initButtons(stage)
+        initTimer()
         initErrors()
 
         stage.title = "FTCSIM"
@@ -183,6 +180,17 @@ class Simulator : Application() {
         collisionError.headerText = "Invalid collision with fixed object"
         expectedDoubleError.title = null
         expectedDoubleError.headerText = "Expected a decimal value for the specified field"
+    }
+
+    private fun initTimer() {
+        val timerUnit = HBox()
+
+        HBox.setHgrow(timer, Priority.ALWAYS)
+        timer.maxWidth = Double.MAX_VALUE
+        timerUnit.spacing = 5.0
+
+        timerUnit.children.addAll(timer, timeCount)
+        builder.children.add(timerUnit)
     }
 
     private fun initButtons(stage: Stage) {
@@ -230,38 +238,51 @@ class Simulator : Application() {
         builder.children.add(buttonBar)
     }
 
-    private fun initTrajectoryTable() {
-        val actionColumn = TableColumn<FXTrajectory, FXAction>("Action")
-        val quantificationColumn = TableColumn<FXTrajectory, String>("in/deg")
-
-        quantificationColumn.style = "-fx-alignment: CENTER-LEFT;"
-        quantificationColumn.cellValueFactory = PropertyValueFactory("Quantification")
-        quantificationColumn.cellFactory = TextFieldTableCell.forTableColumn()
-        quantificationColumn.setOnEditCommit { t ->
+    private fun initTextColumn(
+        col: TableColumn<FXTrajectory, String>,
+        propertyName: String,
+        sideEffect: (FXTrajectory, String) -> FXTrajectory
+    ) {
+        col.style = "-fx-alignment: CENTER-LEFT;"
+        col.cellValueFactory = PropertyValueFactory(propertyName)
+        col.cellFactory = TextFieldTableCell.forTableColumn()
+        col.setOnEditCommit { t ->
             val value = t.newValue.toDoubleOrNull()
             val prevValue = trajectoryTable.items[t.tablePosition.row]
             // Note that turns are currently allowed to have negative values
-            if (value != null && (value > 0 || prevValue.getAction() == FXAction.TURN)) {
+            if ((value != null && (value > 0 || prevValue.getAction() == FXAction.TURN)) || t.newValue == "-") {
                 val position = t.tablePosition.row
-                val prevAction = trajectoryTable.items[position].getAction()
-                // To whomever is maintaining this code, I DARE YOU to simplify these two lines; Even if you're smart,
+                val prevTrajectory = trajectoryTable.items[position].copy()
+                // To whoever is maintaining this code, I DARE YOU to simplify these two lines; Even if you're smart,
                 // and replace it with trajectoryTable.refresh(), it's not going to refresh the table internally
                 trajectoryTable.items.removeAt(position)
-                trajectoryTable.items.add(position, FXTrajectory(prevAction, t.newValue))
+                trajectoryTable.items.add(position, sideEffect(prevTrajectory, t.newValue))
                 trajectoriesModified = true
             } else expectedDoubleError.showAndWait()
         }
-        quantificationColumn.isSortable = false
+        col.isSortable = false
+    }
 
-        actionColumn.minWidth = 160.0
+    private fun initTrajectoryTable() {
+        val actionColumn = TableColumn<FXTrajectory, FXAction>("Action")
+        val quantificationColumn = TableColumn<FXTrajectory, String>("in/deg")
+        val maxVelColumn = TableColumn<FXTrajectory, String>("vₘₐₓ")
+        val maxAngVelColumn = TableColumn<FXTrajectory, String>("ωₘₐₓ")
+        val maxAccelColumn = TableColumn<FXTrajectory, String>("aₘₐₓ")
+
+        initTextColumn(quantificationColumn, "Quantification", FXTrajectory::newQuantification)
+        initTextColumn(maxVelColumn, "MaxVel", FXTrajectory::newMaxVel)
+        initTextColumn(maxAngVelColumn, "MaxAngVel", FXTrajectory::newMaxAngVel)
+        initTextColumn(maxAccelColumn, "MaxAccel", FXTrajectory::newMaxAccel)
+
         actionColumn.setCellValueFactory { cellData -> cellData.value.actionProperty() }
         actionColumn.setCellFactory {
             val combo: ComboBox<FXAction> = ComboBox(actionOptions)
             val cell = ActionCell(combo)
             combo.setOnAction {
-                val prevQuantification = trajectoryTable.items[cell.index].getQuantification()
+                val prevTrajectory = trajectoryTable.items[cell.index].copy()
                 trajectoryTable.items.removeAt(cell.index)
-                trajectoryTable.items.add(cell.index, FXTrajectory(combo.value, prevQuantification))
+                trajectoryTable.items.add(cell.index, prevTrajectory.newAction(combo.value))
                 trajectoriesModified = true
             }
             cell
@@ -331,8 +352,15 @@ class Simulator : Application() {
         }
 
         trajectoryTable.items.add(FXTrajectory(FXAction.FORWARD, "10"))
-        trajectoryTable.columns.addAll(actionColumn, quantificationColumn)
+        trajectoryTable.columns.addAll(
+            actionColumn,
+            quantificationColumn,
+            maxVelColumn,
+            maxAngVelColumn,
+            maxAccelColumn
+        )
         trajectoryTable.selectionModel.selectionMode = SelectionMode.MULTIPLE
+        trajectoryTable.columnResizePolicy = TableView.CONSTRAINED_RESIZE_POLICY
         trajectoryTable.isEditable = true
         trajectoryTable.placeholder = Label("No trajectories added")
 
@@ -433,6 +461,7 @@ class Simulator : Application() {
 
     private fun stopSimulation() {
         simulate = false
+        timer.progress = 0.0
         resetValues()
         robot.moveTo(startPose.in2px)
         timeline.play()
@@ -446,6 +475,8 @@ class Simulator : Application() {
         startTime = Double.NaN
         sequence = getTrajectorySequence()
         trajectoryDurations = sequence.sequenceList?.map { it.duration } ?: emptyList()
+        totalDuration = trajectoryDurations.sum()
+        timeCount.text = "- / %.1f".format(totalDuration)
         segmentIndex = 0
         trajectoriesModified = false
     }
@@ -537,13 +568,16 @@ class Simulator : Application() {
     }
 
     private fun getTrajectorySequence(): TrajectorySequence {
-        return TrajectorySequence(trajectoryTable.items.map { (action, a) ->
-            val amount = a.toDouble()
+        return TrajectorySequence(trajectoryTable.items.map { (action, q, mV, mAV, mA) ->
+            val amount = q.toDouble()
+            val maxVel = if (mV == "-") maxVel else mV.toDouble()
+            val maxAngVel = if (mAV == "-") maxAngVel else mAV.toDouble()
+            val maxAccel = if (mA == "-") maxAccel else mA.toDouble()
             when (action) {
-                FXAction.FORWARD -> forward(amount)
-                FXAction.BACKWARD -> backward(amount)
-                FXAction.STRAFE_LEFT -> strafeLeft(amount)
-                FXAction.STRAFE_RIGHT -> strafeRight(amount)
+                FXAction.FORWARD -> forward(amount, maxVel, maxAngVel, maxAccel)
+                FXAction.BACKWARD -> backward(amount, maxVel, maxAngVel, maxAccel)
+                FXAction.STRAFE_LEFT -> strafeLeft(amount, maxVel, maxAngVel, maxAccel)
+                FXAction.STRAFE_RIGHT -> strafeRight(amount, maxVel, maxAngVel, maxAccel)
                 FXAction.TURN -> turn(amount.toRadians)
                 FXAction.DROP_PIXEL -> dropPixel()
                 FXAction.DROP_PIXEL_ON_BOARD -> dropPixelOnBoard()
@@ -551,29 +585,37 @@ class Simulator : Application() {
         })
     }
 
-    private fun forward(distance: Double): TrajectorySegment {
-        val segment = newBuilder(prevPose).forward(distance).build()[0] as TrajectorySegment
+    private fun forward(distance: Double, maxVel: Double, maxAngVel: Double, maxAccel: Double): TrajectorySegment {
+        val velConst = createVelocityConstraint(maxVel, maxAngVel)
+        val accelConst = createAccelerationConstraint(maxAccel)
+        val segment = newBuilder(prevPose).forward(distance, velConst, accelConst).build()[0] as TrajectorySegment
         segment.trajectoryType = TrajectoryType.FORWARD
         prevPose = segment.endPose
         return segment
     }
 
-    private fun backward(distance: Double): TrajectorySegment {
-        val segment = newBuilder(prevPose).back(distance).build()[0] as TrajectorySegment
+    private fun backward(distance: Double, maxVel: Double, maxAngVel: Double, maxAccel: Double): TrajectorySegment {
+        val velConst = createVelocityConstraint(maxVel, maxAngVel)
+        val accelConst = createAccelerationConstraint(maxAccel)
+        val segment = newBuilder(prevPose).back(distance, velConst, accelConst).build()[0] as TrajectorySegment
         segment.trajectoryType = TrajectoryType.BACKWARD
         prevPose = segment.endPose
         return segment
     }
 
-    private fun strafeLeft(distance: Double): TrajectorySegment {
-        val segment = newBuilder(prevPose).strafeLeft(distance).build()[0] as TrajectorySegment
+    private fun strafeLeft(distance: Double, maxVel: Double, maxAngVel: Double, maxAccel: Double): TrajectorySegment {
+        val velConst = createVelocityConstraint(maxVel, maxAngVel)
+        val accelConst = createAccelerationConstraint(maxAccel)
+        val segment = newBuilder(prevPose).strafeLeft(distance, velConst, accelConst).build()[0] as TrajectorySegment
         segment.trajectoryType = TrajectoryType.STRAFE_LEFT
         prevPose = segment.endPose
         return segment
     }
 
-    private fun strafeRight(distance: Double): TrajectorySegment {
-        val segment = newBuilder(prevPose).strafeRight(distance).build()[0] as TrajectorySegment
+    private fun strafeRight(distance: Double, maxVel: Double, maxAngVel: Double, maxAccel: Double): TrajectorySegment {
+        val velConst = createVelocityConstraint(maxVel, maxAngVel)
+        val accelConst = createAccelerationConstraint(maxAccel)
+        val segment = newBuilder(prevPose).strafeRight(distance, velConst, accelConst).build()[0] as TrajectorySegment
         segment.trajectoryType = TrajectoryType.STRAFE_RIGHT
         prevPose = segment.endPose
         return segment
@@ -603,16 +645,28 @@ class Simulator : Application() {
         val prevTrajectoryDuration = trajectoryDurations.subList(0, segmentIndex).sum()
 
         val time = currentTime()
-        return time - startTime - prevTrajectoryDuration
+        val deltaTime = time - startTime
+        timer.progress = deltaTime / totalDuration
+        timeCount.text = "%.1f / %.1f".format(min(deltaTime, totalDuration), totalDuration)
+        return deltaTime - prevTrajectoryDuration
     }
+
+    private fun createVelocityConstraint(maxVel: Double, maxAngVel: Double) =
+        MinVelocityConstraint(
+            listOf(
+                AngularVelocityConstraint(maxAngVel),
+                MecanumVelocityConstraint(
+                    maxVel,
+                    trackWidth
+                )
+            )
+        )
+
+    private fun createAccelerationConstraint(maxAccel: Double) = ProfileAccelerationConstraint(maxAccel)
 
     private fun setupImageButton(button: Button, imagePath: String) {
         val image = ImageView(imagePath)
-        button.style = "-fx-background-radius: 5em;"
-        button.minWidth = imageButtonRadius
-        button.minHeight = imageButtonRadius
-        button.maxWidth = imageButtonRadius
-        button.maxHeight = imageButtonRadius
+        button.setPrefSize(30.0, 30.0)
         image.isPreserveRatio = true
         image.fitWidth = button.prefWidth
         button.graphic = image

@@ -1,7 +1,7 @@
 plugins {
     kotlin("jvm") version "1.9.0"
     kotlin("plugin.serialization") version "1.9.22"
-    id("org.openjfx.javafxplugin") version "0.0.9"
+    id("org.openjfx.javafxplugin") version "0.1.0"
     application
 }
 
@@ -24,7 +24,7 @@ tasks.test {
 }
 
 kotlin {
-    jvmToolchain(8)
+    jvmToolchain(11)
 }
 
 javafx {
