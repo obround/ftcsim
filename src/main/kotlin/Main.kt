@@ -275,6 +275,7 @@ class Simulator : Application() {
         initTextColumn(maxAngVelColumn, "MaxAngVel", FXTrajectory::newMaxAngVel)
         initTextColumn(maxAccelColumn, "MaxAccel", FXTrajectory::newMaxAccel)
 
+        actionColumn.minWidth = 70.0
         actionColumn.setCellValueFactory { cellData -> cellData.value.actionProperty() }
         actionColumn.setCellFactory {
             val combo: ComboBox<FXAction> = ComboBox(actionOptions)
