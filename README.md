@@ -1,4 +1,5 @@
-<img width="1352" alt="image" src="https://github.com/obround/ftcsim/assets/75817213/72534d76-3959-4ee9-9735-c6fe523526ee">
+<img width="1352" alt="image" src="https://github.com/obround/ftcsim/assets/75817213/87095559-a8e4-4bc7-99e7-41e3f60f3ad2">
+
 
 # FTCSIM (v1.0)
 Trajectory planner and simulator for FTC Centerstage.
@@ -24,3 +25,4 @@ Trajectory planner and simulator for FTC Centerstage.
 
 ### Todo (v1.1):
 - Proper error handling
+- Address TODOs in code
