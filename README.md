@@ -14,7 +14,7 @@ To implement (v1.1):
 - Timing
 - Proper error handling
 - Documentation
-- New theme
+- Custom roadrunner parameters
 - New icon set
 
 ## Installation
