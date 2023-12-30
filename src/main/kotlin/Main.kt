@@ -19,9 +19,7 @@ import javafx.scene.control.cell.PropertyValueFactory
 import javafx.scene.control.cell.TextFieldTableCell
 import javafx.scene.image.Image
 import javafx.scene.image.ImageView
-import javafx.scene.input.ClipboardContent
-import javafx.scene.input.DataFormat
-import javafx.scene.input.TransferMode
+import javafx.scene.input.*
 import javafx.scene.layout.GridPane
 import javafx.scene.layout.HBox
 import javafx.scene.layout.Priority
@@ -63,7 +61,6 @@ class Simulator : Application() {
     private val fps = 60  // Frames per second
     private val numberSamples = 50  // Number of samples when drawing the trajectory
 
-    // TODO: Make this changeable
     private var startPose = Pose2d(0.0, -24.0 * 4 - 6.681 + 2, 180.0.toRadians)  // x, y, angle
     private val fieldDimPixels = 640.0  // 640px x 640px
     private val fieldDimReal = 144.0  // 144in x 144in
@@ -295,13 +292,7 @@ class Simulator : Application() {
             trajectoryTable.items.add(FXTrajectory(FXAction.FORWARD, "10"))
             trajectoriesModified = true
         }
-        remove.setOnAction {
-            // We sort the indices in ascending order, and THEN remove the values from the table to
-            // avoid shifting the other indices out of their position
-            trajectoryTable.selectionModel.selectedIndices.sorted().reversed()
-                .forEach { trajectoryTable.items.removeAt(it) }
-            trajectoriesModified = true
-        }
+        remove.setOnAction { removeSelectedTrajectories() }
         run.setOnAction {
             if (trajectoriesModified) stopSimulation()
             timeline.play()
@@ -343,7 +334,7 @@ class Simulator : Application() {
             // Note that turns are currently allowed to have negative values
             if ((value != null && (value > 0 || prevValue.getAction() == FXAction.TURN)) || t.newValue == "-") {
                 val position = t.tablePosition.row
-                val prevTrajectory = trajectoryTable.items[position].copy()
+                val prevTrajectory = trajectoryTable.items[position]
                 // To whoever is maintaining this code, I DARE YOU to simplify these two lines; Even if you're smart,
                 // and replace it with trajectoryTable.refresh(), it's not going to refresh the table internally
                 trajectoryTable.items.removeAt(position)
@@ -381,9 +372,9 @@ class Simulator : Application() {
             val combo: ComboBox<FXAction> = ComboBox(actionOptions)
             val cell = ActionCell(combo)
             combo.setOnAction {
-                val prevTrajectory = trajectoryTable.items[cell.index].copy()
+                val newTrajectory = trajectoryTable.items[cell.index].copy(a = combo.value)
                 trajectoryTable.items.removeAt(cell.index)
-                trajectoryTable.items.add(cell.index, prevTrajectory.newAction(combo.value))
+                trajectoryTable.items.add(cell.index, newTrajectory)
                 trajectoriesModified = true
             }
             cell
@@ -451,6 +442,14 @@ class Simulator : Application() {
                 }
             }
             row
+        }
+
+        // Register backspace and delete to delete selected items in the table
+        trajectoryTable.addEventFilter(KeyEvent.KEY_PRESSED) { event ->
+            if (event.code in listOf(KeyCode.DELETE, KeyCode.BACK_SPACE)) {
+                removeSelectedTrajectories()
+                event.consume()
+            }
         }
 
         // Trajectory table is initialized with Forward 10
@@ -597,6 +596,17 @@ class Simulator : Application() {
         box.children.addAll(grid, saveButton)
         popup.scene = Scene(box)
         popup.show()
+    }
+
+    /**
+     * Removes all the trajectories currently selected in the table.
+     */
+    private fun removeSelectedTrajectories() {
+        // We sort the indices in ascending order, and THEN remove the values from the table to
+        // avoid shifting the other indices out of their position
+        trajectoryTable.selectionModel.selectedIndices.sorted().reversed()
+            .forEach { trajectoryTable.items.removeAt(it) }
+        trajectoriesModified = true
     }
 
     /**

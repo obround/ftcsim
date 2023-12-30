@@ -55,8 +55,9 @@ object SSPSerializer : KSerializer<SimpleStringProperty> {
 
 
 /**
- * Serializer for `Pose2d`. Since `Pose2d` is a data class, it should be possible to simply annotate is with
- * `@Serializable`, however that is a library, so instead we create a serializer like this.
+ * Serializer for `Pose2d`. Since `Pose2d` is a data class, it should be possible to simply annotate it with
+ * `@Serializable`, however it is contained in the roadrunner library which we shouldn't modify, so instead
+ * we explicitly create a serializer for it.
  */
 object Pose2dSerializer : KSerializer<Pose2d> {
     private val delegateSerializer = DoubleArraySerializer()

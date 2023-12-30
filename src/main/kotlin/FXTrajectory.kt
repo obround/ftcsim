@@ -58,12 +58,10 @@ data class FXTrajectory(
     @Serializable(with = SSPSerializer::class)
     private val maxAccel = SimpleStringProperty(mA)
 
-    // TODO: Switch to this.copy(...)
-    fun newAction(a: FXAction) = FXTrajectory(a, getQuantification(), getMaxVel(), getMaxAngVel(), getMaxAccel())
-    fun newQuantification(q: String) = FXTrajectory(getAction(), q, getMaxVel(), getMaxAngVel(), getMaxAccel())
-    fun newMaxVel(mV: String) = FXTrajectory(getAction(), getQuantification(), mV, getMaxAngVel(), getMaxAccel())
-    fun newMaxAngVel(mAA: String) = FXTrajectory(getAction(), getQuantification(), getMaxVel(), mAA, getMaxAccel())
-    fun newMaxAccel(mA: String) = FXTrajectory(getAction(), getQuantification(), getMaxVel(), getMaxAngVel(), mA)
+    fun newQuantification(q: String) = this.copy(q = q)
+    fun newMaxVel(mV: String) = this.copy(mV = mV)
+    fun newMaxAngVel(mAV: String) = this.copy(mAV = mAV)
+    fun newMaxAccel(mA: String) = this.copy(mA = mA)
 
     // The get functions may seem unused outside of this class, but they are used internally by JavaFX
     fun getAction(): FXAction = action.get()
