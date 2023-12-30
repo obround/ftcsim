@@ -477,7 +477,7 @@ class Simulator : Application() {
         sequence = getTrajectorySequence()
         trajectoryDurations = sequence.sequenceList?.map { it.duration } ?: emptyList()
         totalDuration = trajectoryDurations.sum()
-        timeCount.text = "- / %.1f".format(totalDuration)
+        timeCount.text = "- / %.1fs".format(totalDuration)
         segmentIndex = 0
         trajectoriesModified = false
     }
@@ -648,7 +648,7 @@ class Simulator : Application() {
         val time = currentTime()
         val deltaTime = time - startTime
         timer.progress = deltaTime / totalDuration
-        timeCount.text = "%.1f / %.1f".format(min(deltaTime, totalDuration), totalDuration)
+        timeCount.text = "%.1fs / %.1fs".format(min(deltaTime, totalDuration), totalDuration)
         return deltaTime - prevTrajectoryDuration
     }
 
