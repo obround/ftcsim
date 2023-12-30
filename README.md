@@ -25,5 +25,4 @@ Trajectory planner and simulator for FTC Centerstage.
 ### Todo (v1.1):
 - Custom robot starting position (currently hard coded)
 - Proper error handling
-- Documentation
 - New icon set

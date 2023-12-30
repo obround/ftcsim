@@ -46,6 +46,15 @@ import kotlin.math.min
 import kotlin.math.sin
 
 
+/**
+ * The simulator GUI. If you aren't maintaining this codebase, the changes you make will most likely be to the
+ * constants (marked below). The simulator works as follows:
+ *     1. All the GUI elements are initialized
+ *     2. `Simulator.simulationLoop(...)` is called `fps` times per second
+ *     3. This renders the canvas and animates the robot's movements
+ *  Notes:
+ *     - When modifying code here, it is very easy to forget to convert to pixels or inches
+ */
 class Simulator : Application() {
     // CONSTANTS
     private val fps = 60  // Frames per second
@@ -64,6 +73,7 @@ class Simulator : Application() {
     private val maxAngAccel = 5.528055275836724  // rad/sec^2
 
     // COLLISION
+    // All the following values are in pixels
     private val leftBackdrop = Rectangle2D(105.0, 0.0, 110.0, 55.0)
     private val rightBackdrop = Rectangle2D(425.0, 0.0, 110.0, 55.0)
     private val trussLeg1 = Rectangle2D(0.0, 321.0, 3.0, 105.0)
@@ -91,32 +101,57 @@ class Simulator : Application() {
     )
 
     // OTHER
+    // Whether the simulation should run or not
     private var simulate = false
+
+    // The number of pixels stacked on the left backdrop (to render)
     private var leftBackDropScore = 0
+
+    // The number of pixels stacked on the right backdrop (to render)
     private var rightBackDropScore = 0
+
+    // Positions of all the pixels in the format (x:pixel, y:pixel)
     private var pixelPositions = mutableListOf<Pair<Double, Double>>()
+
+    // Internally used when creating trajectories
     private var prevPose = startPose
     private val velocityConstraint = createVelocityConstraint(maxVel, maxAngVel)
     private val accelerationConstraint = createAccelerationConstraint(maxAccel)
+
+    // The time when the simulation was started
     private var startTime = Double.NaN
+
+    // The table of movement paths
     private val trajectoryTable = TableView<FXTrajectory>()
 
+    // The sequence of movements
     private var sequence = getTrajectorySequence()
+
+    // The current movement segment being animated
     private var segmentIndex = 0
+
+    // The duration of each movement segment
     private var trajectoryDurations = sequence.sequenceList?.map { it.duration } ?: emptyList()
+
+    // The total trajectory duration
     private var totalDuration = trajectoryDurations.sum()
 
     // CONVERSIONS
     private val Double.in2px get() = this * fieldDimPixels / fieldDimReal
+
+    // Silently converts the heading to degrees
     private val Pose2d.in2px get() = Pose2d(this.x.in2px, this.y.in2px, heading.toDegrees)
 
     private val windowWidth = field.width + 600
     private val windowHeight = field.height + 50
 
     // UI
+    // For drag and drop of rows in the table
     private val serializedMimeType = DataFormat("application/x-java-serialized-object")
-    private var trajectoriesModified = false
     private val selections = mutableListOf<FXTrajectory>()
+
+    // Has the overall trajectory been modified?
+    private var trajectoriesModified = false
     private val root = HBox()
     private val canvas = Canvas(field.width, field.height)
     private val builder = VBox()
@@ -133,6 +168,8 @@ class Simulator : Application() {
         "why tf would u not put a positive decimal bruh",
         ButtonType.OK
     )
+
+    // The options for the combo boxes in the action column of the table
     private val actionOptions =
         FXCollections.observableList(
             listOf(
@@ -146,12 +183,17 @@ class Simulator : Application() {
             )
         )
 
+    /**
+     * The first function run. Initializes the entire GUI and canvas.
+     */
     override fun start(stage: Stage) {
+        // Styling
         root.padding = Insets(25.0)
         builder.padding = Insets(0.0, 0.0, 0.0, 25.0)
         builder.spacing = 25.0
         HBox.setHgrow(builder, Priority.ALWAYS)
 
+        // Initialize the GUI elements
         initLogo()
         initTrajectoryTable()
         // Requires the stage to create the file dialogs for save/open
@@ -161,8 +203,10 @@ class Simulator : Application() {
 
         stage.title = "FTCSIM"
         stage.isResizable = false
+        // If this isn't set, the images look like shit
         canvas.graphicsContext2D.isImageSmoothing = false
 
+        // Initialize the canvas rendering
         timeline = Timeline(KeyFrame(
             Duration.millis(1000.0 / fps),
             { simulationLoop(canvas.graphicsContext2D) }
@@ -193,6 +237,9 @@ class Simulator : Application() {
         builder.children.add(timerUnit)
     }
 
+    /**
+     * Creates the toolbar of buttons and adds their functionality.
+     */
     private fun initButtons(stage: Stage) {
         val buttonBar = HBox()
         val add = Button("Add")
@@ -238,6 +285,17 @@ class Simulator : Application() {
         builder.children.add(buttonBar)
     }
 
+    /**
+     * Helper function to create each column in the table with a TextField. Unless you know what you're
+     * doing, you probably don't want to mess with this function.
+     *
+     * @param col: The column to be initialized
+     * @param propertyName: The 'internal name' of the column to be referred to by JavaFX. JavaFX uses
+     *                      reflection to dynamically call `FXTrajectory::get{propertyName}`, which is
+     *                      why privatizing those functions (which seems doable) will break things
+     * @param sideEffect: The new value to put into the trajectory table when a change is made to a
+     *                    cell in the column
+     */
     private fun initTextColumn(
         col: TableColumn<FXTrajectory, String>,
         propertyName: String,
@@ -263,6 +321,14 @@ class Simulator : Application() {
         col.isSortable = false
     }
 
+    /**
+     * Initializes the entire trajectory table. Unless you know what you're doing, you probably
+     * don't want to mess with this function.
+     * Hints:
+     *     - `column.setCellValueFactory` is the function to run when JavaFX wants to read
+     *        the `FXTrajectory`
+     *     - `column.setCellFactory` is how the cell is made
+     */
     private fun initTrajectoryTable() {
         val actionColumn = TableColumn<FXTrajectory, FXAction>("Action")
         val quantificationColumn = TableColumn<FXTrajectory, String>("in/deg")
@@ -290,7 +356,7 @@ class Simulator : Application() {
         }
         actionColumn.isSortable = false
 
-        // To make the table draggable
+        // To make the table rows draggable
         trajectoryTable.setRowFactory {
             val row: TableRow<FXTrajectory> = TableRow()
             row.setOnDragDetected { event ->
@@ -361,6 +427,7 @@ class Simulator : Application() {
             maxAccelColumn
         )
         trajectoryTable.selectionModel.selectionMode = SelectionMode.MULTIPLE
+        // Allows the columns to expand and take up space
         trajectoryTable.columnResizePolicy = TableView.CONSTRAINED_RESIZE_POLICY
         trajectoryTable.isEditable = true
         trajectoryTable.placeholder = Label("No trajectories added")
@@ -382,6 +449,9 @@ class Simulator : Application() {
         builder.children.add(topLabel)
     }
 
+    /**
+     * Serializes the current trajectory, and then saves it to the user's choice of file
+     */
     private fun saveTrajectory(stage: Stage) {
         val serialized = Json.encodeToString(trajectoryTable.items.toList())
         val fileChooser = FileChooser()
@@ -392,12 +462,16 @@ class Simulator : Application() {
             File(selectedFile.toPath().toString()).printWriter().use { out -> out.println(serialized) }
     }
 
+    /**
+     * Opens a file containing the serialized trajectory, and then loads it into the table
+     */
     private fun openTrajectory(stage: Stage) {
         val fileChooser = FileChooser()
         fileChooser.title = "Open"
         val selectedFile = fileChooser.showOpenDialog(stage)
         if (selectedFile != null) {
             val text = File(selectedFile.toPath().toString()).readText()
+            // TODO: Verify the text is in fact valid and deserializable
             val deserialized = Json.decodeFromString<List<FXTrajectory>>(text)
             // TODO: Add prompt asking "are you sure you want to delete the current trajectories"
             trajectoryTable.items.clear()
@@ -406,6 +480,9 @@ class Simulator : Application() {
         stopSimulation()
     }
 
+    /**
+     * Exports the trajectory to a format that can be copy-pasted into the autonomous code
+     */
     private fun exportTrajectory() {
         val body = trajectoryTable.items.joinToString(separator = "\n    ") { it.exportable() + ";" }
         val export = "private void movement() {\n    $body\n}"
@@ -420,7 +497,11 @@ class Simulator : Application() {
         popup.show()
     }
 
+    /**
+     * The guts of the simulator. Responsible for robot animation. Called every frame.
+     */
     private fun simulationLoop(gc: GraphicsContext) {
+        // If the trajectories have been modified, we want to stop running through the trajectories
         if (trajectoriesModified) stopSimulation()
         gc.drawImage(field, 0.0, 0.0)
         if (simulate) {
@@ -460,6 +541,10 @@ class Simulator : Application() {
         }
     }
 
+    /**
+     * Stops the simulation by resetting all the state values and moving the robot back the
+     * starting position.
+     */
     private fun stopSimulation() {
         simulate = false
         timer.progress = 0.0
@@ -468,6 +553,9 @@ class Simulator : Application() {
         timeline.play()
     }
 
+    /**
+     * Resets the simulator's current state
+     */
     private fun resetValues() {
         leftBackDropScore = 0
         rightBackDropScore = 0
@@ -491,6 +579,16 @@ class Simulator : Application() {
         }
     }
 
+    /**
+     * For each simple movement of the robot (this DOES NOT include turns), this function renders the robots
+     * position at that time. It works by measuring the time since the simulation has started, and what the
+     * trajectory passed in as a parameter says it should be at the measured time. The function
+     * `updateRobotTurn` works analogously.
+     *
+     * @param segment: The trajectory piece that is currently being animated. Contains all the information
+     * for the robots position at all times throughout the segment's run time. This stays constant until
+     * the entire segment piece has been animated.
+     */
     private fun updateRobotMove(segment: TrajectorySegment) {
         val trajectory = segment.trajectory
 
@@ -503,6 +601,9 @@ class Simulator : Application() {
         robot.rotation = angle
     }
 
+    /**
+     * Animates the robot's turns. Works the same way as `updateRobotMovement`.
+     */
     private fun updateRobotTurn(segment: TurnSegment) {
         val motion = segment.motionProfile
         val profileTime = getProfileTime()
@@ -516,12 +617,21 @@ class Simulator : Application() {
         robot.rotation = angle.toDegrees
     }
 
+    /**
+     * The animation function ran when the robot is performing either:
+     *     - Dropping a pixel on the field
+     *     - Dropping a pixel on the backdrop
+     * When dropped on the field, it calculates the canvas position to render the pixel. When dropped on the
+     * backdrop, it waits for the specified amount of time before incrementing the closest backdrop's pixel
+     * count.
+     */
     private fun updateRobotAction(segment: ActionSegment) {
         when (val action = segment.action) {
             Action.DROP_PIXEL -> {
                 if (getProfileTime() >= segment.duration) {
                     val rect = robot.asRectangle2D
                     val rotation = robot.rotation.toRadians
+                    // Some trig to calculate the position the pixel should be at
                     pixelPositions.add(
                         Pair(
                             rect.centerPointX + (action.distanceDropped!!.in2px + rect.height / 2) * cos(rotation),
@@ -531,6 +641,7 @@ class Simulator : Application() {
                 }
             }
 
+            // Drop the pixel on the closes backboard AFTER the entire segment time is up
             Action.DROP_PIXEL_ON_BOARD ->
                 if (robot.distanceTo(leftBackdrop) < robot.distanceTo(rightBackdrop)
                     && getProfileTime() >= segment.duration
@@ -539,9 +650,13 @@ class Simulator : Application() {
                     && getProfileTime() >= segment.duration
                 ) rightBackDropScore++
         }
+
         if (getProfileTime() >= segment.duration) segmentIndex++
     }
 
+    /**
+     * Draws out the trajectory the robot will be taking.
+     */
     private fun drawTrajectory(gc: GraphicsContext, segment: SequenceSegment) {
         if (segment is TrajectorySegment) {
             gc.lineWidth = 7.0
@@ -558,6 +673,7 @@ class Simulator : Application() {
                     10.0
                 )
             }
+            // We want the path to be slightly transparent
             gc.globalAlpha = 0.6
             gc.strokePolyline(
                 pathPoints.map { it.x + robotWidth.in2px / 2 }.toDoubleArray(),
@@ -568,9 +684,13 @@ class Simulator : Application() {
         }
     }
 
+    /**
+     * Converts the GUI trajectory table's items into a sequence for roadrunner.
+     */
     private fun getTrajectorySequence(): TrajectorySequence {
         return TrajectorySequence(trajectoryTable.items.map { (action, q, mV, mAV, mA) ->
             val amount = q.toDouble()
+            // "-" represents a default
             val maxVel = if (mV == "-") maxVel else mV.toDouble()
             val maxAngVel = if (mAV == "-") maxAngVel else mAV.toDouble()
             val maxAccel = if (mA == "-") maxAccel else mA.toDouble()
@@ -639,9 +759,17 @@ class Simulator : Application() {
         maxAngAccel
     )
 
+    /**
+     * The current time in seconds
+     */
     private fun currentTime() = System.currentTimeMillis() / 1000.0
 
+    /**
+     * Returns the elapsed time along the trajectory currently running. In addition, it also updates
+     * the timer bar.
+     */
     private fun getProfileTime(): Double {
+        // If the simulation has been reset or has not been run yet
         if (startTime.isNaN()) startTime = currentTime()
         val prevTrajectoryDuration = trajectoryDurations.subList(0, segmentIndex).sum()
 

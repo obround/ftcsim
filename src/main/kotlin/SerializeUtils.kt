@@ -6,6 +6,11 @@ import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 
+
+/**
+ * Serializer for the SimpleObjectProperty class of FXAction. Simply serializes/deserializes the
+ * string form of the FXAction.
+ */
 object SOPSerializer : KSerializer<SimpleObjectProperty<FXAction>> {
     override val descriptor = PrimitiveSerialDescriptor("SimpleObjectProperty", PrimitiveKind.STRING)
 
@@ -18,6 +23,9 @@ object SOPSerializer : KSerializer<SimpleObjectProperty<FXAction>> {
     }
 }
 
+/**
+ * Serializer for the SimpleStringProperty. Simply serializes/deserializes its string parameter.
+ */
 object SSPSerializer : KSerializer<SimpleStringProperty> {
     override val descriptor = PrimitiveSerialDescriptor("SimpleObjectProperty", PrimitiveKind.STRING)
 
