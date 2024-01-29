@@ -1,4 +1,5 @@
 import com.acmerobotics.roadrunner.geometry.Pose2d
+import com.acmerobotics.roadrunner.geometry.Vector2d
 import com.acmerobotics.roadrunner.trajectory.constraints.AngularVelocityConstraint
 import com.acmerobotics.roadrunner.trajectory.constraints.MecanumVelocityConstraint
 import com.acmerobotics.roadrunner.trajectory.constraints.MinVelocityConstraint
@@ -202,6 +203,8 @@ class Simulator : Application() {
                 FXAction.BACKWARD,
                 FXAction.STRAFE_LEFT,
                 FXAction.STRAFE_RIGHT,
+                FXAction.SPLINE_TO,
+                FXAction.LINE_TO,
                 FXAction.TURN,
                 FXAction.DROP_PIXEL,
                 FXAction.DROP_PIXEL_ON_BOARD
@@ -332,15 +335,15 @@ class Simulator : Application() {
             val value = t.newValue.toDoubleOrNull()
             val prevValue = trajectoryTable.items[t.tablePosition.row]
             // Note that turns are currently allowed to have negative values
-            if ((value != null && (value > 0 || prevValue.getAction() == FXAction.TURN)) || t.newValue == "-") {
-                val position = t.tablePosition.row
-                val prevTrajectory = trajectoryTable.items[position]
-                // To whoever is maintaining this code, I DARE YOU to simplify these two lines; Even if you're smart,
-                // and replace it with trajectoryTable.refresh(), it's not going to refresh the table internally
-                trajectoryTable.items.removeAt(position)
-                trajectoryTable.items.add(position, sideEffect(prevTrajectory, t.newValue))
-                trajectoriesModified = true
-            } else expectedDoubleError.showAndWait()
+            // if ((value != null && (value > 0 || prevValue.getAction() == FXAction.TURN)) || t.newValue == "-") {
+            val position = t.tablePosition.row
+            val prevTrajectory = trajectoryTable.items[position]
+            // To whoever is maintaining this code, I DARE YOU to simplify these two lines; Even if you're smart,
+            // and replace it with trajectoryTable.refresh(), it's not going to refresh the table internally
+            trajectoryTable.items.removeAt(position)
+            trajectoryTable.items.add(position, sideEffect(prevTrajectory, t.newValue))
+            trajectoriesModified = true
+            // } else expectedDoubleError.showAndWait()
         }
         col.isSortable = false
         col.isReorderable = false
@@ -366,7 +369,7 @@ class Simulator : Application() {
         initTextColumn(maxAngVelColumn, "MaxAngVel", FXTrajectory::newMaxAngVel)
         initTextColumn(maxAccelColumn, "MaxAccel", FXTrajectory::newMaxAccel)
 
-        actionColumn.minWidth = 70.0
+        actionColumn.minWidth = 90.0
         actionColumn.setCellValueFactory { cellData -> cellData.value.actionProperty() }
         actionColumn.setCellFactory {
             val combo: ComboBox<FXAction> = ComboBox(actionOptions)
@@ -445,12 +448,12 @@ class Simulator : Application() {
         }
 
         // Register backspace and delete to delete selected items in the table
-        trajectoryTable.addEventFilter(KeyEvent.KEY_PRESSED) { event ->
-            if (event.code in listOf(KeyCode.DELETE, KeyCode.BACK_SPACE)) {
-                removeSelectedTrajectories()
-                event.consume()
-            }
-        }
+//        trajectoryTable.addEventFilter(KeyEvent.KEY_PRESSED) { event ->
+//            if (event.code in listOf(KeyCode.DELETE, KeyCode.BACK_SPACE)) {
+//                removeSelectedTrajectories()
+//                event.consume()
+//            }
+//        }
 
         // Trajectory table is initialized with Forward 10
         trajectoryTable.items.add(FXTrajectory(FXAction.FORWARD, "10"))
@@ -533,7 +536,7 @@ class Simulator : Application() {
      * Exports the trajectory to a format that can be copy-pasted into the autonomous code
      */
     private fun exportTrajectory() {
-        val body = trajectoryTable.items.joinToString(separator = "\n    ") { it.exportable() + ";" }
+        val body = trajectoryTable.items.joinToString(separator = "\n    ") { it.exportable(startPose) + ";" }
         val export = "private void movement() {\n    $body\n}"
         val popup = Stage()
 
@@ -580,7 +583,7 @@ class Simulator : Application() {
                 ?: expectedDoubleError.show()
             fields[1].second.text.toDoubleOrNull()?.let { startPose = startPose.copy(y = it) }
                 ?: expectedDoubleError.show()
-            fields[2].second.text.toDoubleOrNull()?.let { startPose = startPose.copy(heading = it) }
+            fields[2].second.text.toDoubleOrNull()?.let { startPose = startPose.copy(heading = it.toRadians) }
                 ?: expectedDoubleError.show()
             fields[3].second.text.toDoubleOrNull()?.let { specifiedMaxVel = it } ?: expectedDoubleError.show()
             fields[4].second.text.toDoubleOrNull()?.let { specifiedMaxAngVel = it } ?: expectedDoubleError.show()
@@ -645,7 +648,7 @@ class Simulator : Application() {
         )
         // Draw the pixels placed on the field
         pixelPositions.forEach { (x, y) -> gc.drawImage(pixel, x - pixel.width / 2, y - pixel.height / 2) }
-        handleCollisions()
+//        handleCollisions()
         // Stop the animation once we finish the final segment
         if (segmentIndex == sequence.size()) {
             timeline.stop()
@@ -666,7 +669,7 @@ class Simulator : Application() {
     }
 
     /**
-     * Resets the simulator's current state
+     * Resets the simulator's current state.
      */
     private fun resetValues() {
         leftBackDropScore = 0
@@ -682,9 +685,14 @@ class Simulator : Application() {
         trajectoriesModified = false
     }
 
+    /**
+     * Detects whether a collision has occurred using the robot and object's bounding boxes, and raises an error
+     * if a collision has occurred.
+     */
     private fun handleCollisions() {
         fixedObjects.forEach { obj ->
             if (robot.collision(obj)) {
+                // Stop the entire simulation
                 timeline.stop()
                 collisionError.show()
             }
@@ -801,17 +809,42 @@ class Simulator : Application() {
      */
     private fun getTrajectorySequence(): TrajectorySequence {
         return TrajectorySequence(trajectoryTable.items.map { (action, q, mV, mAV, mA) ->
-            val amount = q.toDouble()
+            // TODO: Make this dung pile better, no nulls please
+            val amount: Double? = q.toDoubleOrNull()
             // "-" represents a default
             val maxVel = if (mV == "-") specifiedMaxVel else mV.toDouble()
             val maxAngVel = if (mAV == "-") specifiedMaxAngVel else mAV.toDouble()
             val maxAccel = if (mA == "-") specifiedMaxAccel else mA.toDouble()
             when (action) {
-                FXAction.FORWARD -> forward(amount, maxVel, maxAngVel, maxAccel)
-                FXAction.BACKWARD -> backward(amount, maxVel, maxAngVel, maxAccel)
-                FXAction.STRAFE_LEFT -> strafeLeft(amount, maxVel, maxAngVel, maxAccel)
-                FXAction.STRAFE_RIGHT -> strafeRight(amount, maxVel, maxAngVel, maxAccel)
-                FXAction.TURN -> turn(amount.toRadians)
+                FXAction.FORWARD -> forward(amount!!, maxVel, maxAngVel, maxAccel)
+                FXAction.BACKWARD -> backward(amount!!, maxVel, maxAngVel, maxAccel)
+                FXAction.STRAFE_LEFT -> strafeLeft(amount!!, maxVel, maxAngVel, maxAccel)
+                FXAction.STRAFE_RIGHT -> strafeRight(amount!!, maxVel, maxAngVel, maxAccel)
+                FXAction.SPLINE_TO -> {
+                    val spline = q.split(",", ", ", " ,", " , ").map { it.toDoubleOrNull() }
+                    splineTo(
+                        spline.getOrNull(0),
+                        spline.getOrNull(1),
+                        spline.getOrNull(2)?.toRadians,
+                        maxVel,
+                        maxAngVel,
+                        maxAccel
+                    )
+                }
+
+                FXAction.LINE_TO -> {
+                    val line = q.split(",", ", ", " ,", " , ").map { it.toDoubleOrNull() }
+                    lineTo(
+                        line.getOrNull(0),
+                        line.getOrNull(1),
+                        line.getOrNull(2)?.toRadians,
+                        maxVel,
+                        maxAngVel,
+                        maxAccel
+                    )
+                }
+
+                FXAction.TURN -> turn(amount!!.toRadians)
                 FXAction.DROP_PIXEL -> dropPixel()
                 FXAction.DROP_PIXEL_ON_BOARD -> dropPixelOnBoard()
             }
@@ -850,6 +883,47 @@ class Simulator : Application() {
         val accelConst = createAccelerationConstraint(maxAccel)
         val segment = newBuilder(prevPose).strafeRight(distance, velConst, accelConst).build()[0] as TrajectorySegment
         segment.trajectoryType = TrajectoryType.STRAFE_RIGHT
+        prevPose = segment.endPose
+        return segment
+    }
+
+    private fun splineTo(
+        x: Double?,
+        y: Double?,
+        endTangent: Double?,
+        maxVel: Double,
+        maxAngVel: Double,
+        maxAccel: Double
+    ): SequenceSegment {
+        val velConst = createVelocityConstraint(maxVel, maxAngVel)
+        val accelConst = createAccelerationConstraint(maxAccel)
+        val segment = newBuilder(prevPose).splineTo(
+            Vector2d(x ?: prevPose.x, y ?: prevPose.y),
+            endTangent ?: 0.0,
+            velConst,
+            accelConst
+        )
+            .build()[0] as SequenceSegment
+        prevPose = segment.endPose
+        return segment
+    }
+
+    private fun lineTo(
+        x: Double?,
+        y: Double?,
+        heading: Double?,
+        maxVel: Double,
+        maxAngVel: Double,
+        maxAccel: Double
+    ): SequenceSegment {
+        val velConst = createVelocityConstraint(maxVel, maxAngVel)
+        val accelConst = createAccelerationConstraint(maxAccel)
+        val segment = newBuilder(prevPose).lineToLinearHeading(
+            Pose2d(x ?: prevPose.x, y ?: prevPose.y, heading ?: prevPose.heading),
+            velConst,
+            accelConst
+        )
+            .build()[0] as SequenceSegment
         prevPose = segment.endPose
         return segment
     }

@@ -11,8 +11,8 @@ import trajectorysequence.sequencesegment.SequenceSegment
  * TODO: Find the actual duration and distance dropped values
  **/
 enum class Action(val duration: Double, val distanceDropped: Double?) {
-    DROP_PIXEL(1.0, 3.0),
-    DROP_PIXEL_ON_BOARD(1.0, null)
+    DROP_PIXEL(1.0, 4.0),
+    DROP_PIXEL_ON_BOARD(5.0, null)
 }
 
 class ActionSegment(val action: Action, pose: Pose2d) : SequenceSegment(action.duration, pose, pose, emptyList())

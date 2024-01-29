@@ -1,3 +1,4 @@
+import com.acmerobotics.roadrunner.geometry.Pose2d
 import javafx.beans.property.SimpleObjectProperty
 import javafx.beans.property.SimpleStringProperty
 import kotlinx.serialization.Serializable
@@ -16,6 +17,8 @@ enum class FXAction(private val text: String, val exportableFunction: String) {
     STRAFE_LEFT("Strafe Left", "strafeLeft"),
     STRAFE_RIGHT("Strafe Right", "strafeRight"),
     TURN("Turn", "turn"),
+    SPLINE_TO("Spline To", "splineTo"),
+    LINE_TO("Line To", "lineTo"),
     DROP_PIXEL("Drop Pixel (Field)", "dropPixel"),
     DROP_PIXEL_ON_BOARD("Drop Pixel (Board)", "dropPixelOnBoard");
 
@@ -74,14 +77,31 @@ data class FXTrajectory(
     /**
      * Returns the exportable representation of the action as a string
      */
-    fun exportable() = when (val action = getAction()) {
+    fun exportable(startPose: Pose2d) = when (val action = getAction()) {
         FXAction.TURN -> "${action.exportableFunction}(${getQuantification()})"
-        else -> {
-            val mV = getMaxVel().isOrElse("-", "maxVelocity")
-            val mAV = getMaxAngVel().isOrElse("-", "maxAngularVelocity")
-            val mA = getMaxAccel().isOrElse("-", "maxAcceleration")
-            "${action.exportableFunction}(${getQuantification()}, ${mV}, ${mAV}, ${mA}, trackWidth)"
+        FXAction.LINE_TO -> {
+            val (fmV, fmAV, fmA) = getFormattedMaxes()
+            val specs = getQuantification().split(",", ", ", " ,", " , ").map { it.toDouble() }
+            ("${action.exportableFunction}(" +
+                    "${startPose.x - specs[0]}, " +
+                    "${startPose.y - specs[1]}, " +
+                    "${(startPose.heading.toDegrees - specs[2]) % startPose.heading.toDegrees}, " +
+                    "${fmV}, ${fmAV}, ${fmA}, trackWidth)")
         }
+
+        FXAction.DROP_PIXEL, FXAction.DROP_PIXEL_ON_BOARD -> "${action.exportableFunction}()"
+        else -> {
+            val (fmV, fmAV, fmA) = getFormattedMaxes()
+            "${action.exportableFunction}(${getQuantification()}, ${fmV}, ${fmAV}, ${fmA}, trackWidth)"
+        }
+    }
+
+    private fun getFormattedMaxes(): Triple<String, String, String> {
+        return Triple(
+            getMaxVel().isOrElse("-", "maxVelocity"),
+            getMaxAngVel().isOrElse("-", "maxAngularVelocity"),
+            getMaxAccel().isOrElse("-", "maxAcceleration")
+        )
     }
 
     private fun String.isOrElse(cond: String, newValue: String) = if (this == cond) newValue else this
