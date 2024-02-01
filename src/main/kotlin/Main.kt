@@ -65,8 +65,8 @@ class Simulator : Application() {
     private var startPose = Pose2d(0.0, -24.0 * 4 - 6.681 + 2, 180.0.toRadians)  // x, y, angle
     private val fieldDimPixels = 640.0  // 640px x 640px
     private val fieldDimReal = 144.0  // 144in x 144in
-    private val robotWidth = 17.995  // 17.995in (rear to intake tip)
-    private val robotLength = 17.319 // 17.319in (side to side)
+    private val robotWidth = 18.0  // 17.995in (rear to intake tip)
+    private val robotLength = 17.5 // 17.319in (side to side)
     private val trackWidth = 12.7  // Distance between wheels
 
     // Drive Constants
@@ -76,7 +76,7 @@ class Simulator : Application() {
     private val maxAngAccel = 5.528055275836724  // rad/sec^2
 
     // Default constants specified for the autonomous programs (e.g. BlueClose.java)
-    private var specifiedMaxVel = 100.0
+    private var specifiedMaxVel = 55.0
     private var specifiedMaxAngVel = 1.75
     private var specifiedMaxAccel = 100.0
 
@@ -107,7 +107,7 @@ class Simulator : Application() {
     private val field = Image("/field.png")
     private val pixel = Image("/pixel_ftc.png")
     private val robot = Robot(
-        Image("/robot_ftc.png", robotWidth.in2px, robotLength.in2px, true, false),
+        Image("/robot_ftc.png", robotWidth.in2px, robotLength.in2px, false, false),
         fieldDimPixels,
         startPose.in2px
     )
