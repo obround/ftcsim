@@ -8,6 +8,7 @@ import javafx.animation.KeyFrame
 import javafx.animation.Timeline
 import javafx.application.Application
 import javafx.collections.FXCollections
+import javafx.collections.ObservableList
 import javafx.geometry.Insets
 import javafx.geometry.Pos
 import javafx.geometry.Rectangle2D
@@ -278,6 +279,7 @@ class Simulator : Application() {
         val open = Button("Open")
         val export = Button("Export")
         val settings = Button("Settings")
+        val flip = Button("Flip")
 
         buttonBar.spacing = 4.0
 
@@ -289,6 +291,8 @@ class Simulator : Application() {
         setupImageButton(open, "/open.png")
         setupImageButton(export, "/export.png")
         setupImageButton(settings, "/settings.png")
+
+        flip.setPrefSize(60.0, 30.0)
 
         add.setOnAction {
             // Default segment is Forward 10
@@ -307,8 +311,9 @@ class Simulator : Application() {
         open.setOnAction { openTrajectory(stage) }
         export.setOnAction { exportTrajectory() }
         settings.setOnAction { openSettings() }
+        flip.setOnAction { flipTrajectories() }
 
-        buttonBar.children.addAll(add, remove, run, stop, save, open, export, settings)
+        buttonBar.children.addAll(add, remove, run, stop, save, open, export, settings, flip)
         builder.children.add(buttonBar)
     }
 
@@ -599,6 +604,31 @@ class Simulator : Application() {
         box.children.addAll(grid, saveButton)
         popup.scene = Scene(box)
         popup.show()
+    }
+
+    private fun flipTrajectories() {
+        startPose = startPose.copy(x = 126 - startPose.x, heading = 180.0.toRadians - startPose.heading)
+        // JANKY AS SHIT
+        trajectoryTable.items.toList().forEachIndexed { i, it ->
+            val newTrajectory = when (it.getAction()) {
+                FXAction.STRAFE_LEFT -> it.newAction(FXAction.STRAFE_RIGHT)
+                FXAction.STRAFE_RIGHT -> it.newAction(FXAction.STRAFE_LEFT)
+                FXAction.TURN -> it.newQuantification("-" + it.getQuantification())
+                FXAction.SPLINE_TO -> TODO()
+                FXAction.LINE_TO -> {
+                    val specs = it.getQuantification().split(",", ", ", " ,", " , ").map { it.toDouble() }
+                    val newX = fieldDimReal - 18.0 - specs[0]
+                    val newY = specs[1]
+                    val newHeading = specs[2]
+                    it.newQuantification("$newX, $newY, $newHeading")
+                }
+
+                FXAction.FORWARD, FXAction.BACKWARD, FXAction.DROP_PIXEL, FXAction.DROP_PIXEL_ON_BOARD -> it
+            }
+            trajectoryTable.items.removeAt(i)
+            trajectoryTable.items.add(i, newTrajectory)
+        }
+        stopSimulation()
     }
 
     /**

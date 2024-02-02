@@ -61,6 +61,7 @@ data class FXTrajectory(
     @Serializable(with = SSPSerializer::class)
     private val maxAccel = SimpleStringProperty(mA)
 
+    fun newAction(a: FXAction) = this.copy(a = a)
     fun newQuantification(q: String) = this.copy(q = q)
     fun newMaxVel(mV: String) = this.copy(mV = mV)
     fun newMaxAngVel(mAV: String) = this.copy(mAV = mAV)
