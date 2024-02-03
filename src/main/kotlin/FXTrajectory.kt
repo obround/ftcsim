@@ -2,6 +2,7 @@ import com.acmerobotics.roadrunner.geometry.Pose2d
 import javafx.beans.property.SimpleObjectProperty
 import javafx.beans.property.SimpleStringProperty
 import kotlinx.serialization.Serializable
+import kotlin.math.cos
 
 
 /**
@@ -83,10 +84,13 @@ data class FXTrajectory(
         FXAction.LINE_TO -> {
             val (fmV, fmAV, fmA) = getFormattedMaxes()
             val specs = getQuantification().split(",", ", ", " ,", " , ").map { it.toDouble() }
+            val newHeading =
+                if (startPose.heading == 0.0) specs[2] else (startPose.heading.toDegrees - specs[2]) % startPose.heading.toDegrees
             ("${action.exportableFunction}(" +
-                    "${startPose.x - specs[0]}, " +
-                    "${startPose.y - specs[1]}, " +
-                    "${(startPose.heading.toDegrees - specs[2]) % startPose.heading.toDegrees}, " +
+                    "${cos(startPose.heading) * (specs[0] - startPose.x)}, " +
+                    "${cos(startPose.heading) * (specs[1] - startPose.y)}, " +
+                    // THIS IS JANKY SHIT AND WILL NOT SCALE
+                    "${newHeading}, " +
                     "${fmV}, ${fmAV}, ${fmA}, trackWidth)")
         }
 

@@ -542,7 +542,7 @@ class Simulator : Application() {
      */
     private fun exportTrajectory() {
         val body = trajectoryTable.items.joinToString(separator = "\n    ") { it.exportable(startPose) + ";" }
-        val export = "private void movement() {\n    $body\n}"
+        val export = "private void movement() {\n    $body\n    resetArm();\n    stop();\n}"
         val popup = Stage()
 
         val copyableField = TextArea()
