@@ -1,8 +1,12 @@
 <img width="1352" alt="image" src="https://github.com/obround/ftcsim/assets/75817213/87095559-a8e4-4bc7-99e7-41e3f60f3ad2">
 
+### NOTE: If you were wondering, bifunctor is my alt account
 
 # FTCSIM (v1.0)
 Trajectory planner and simulator for FTC Centerstage.
+
+## Path to v2
+Over the summer, the plan is to create a 3D simulator to more accurately simulate the game. Stay tuned!
 
 ## Installation
 ### Requirements
